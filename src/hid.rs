@@ -167,41 +167,21 @@ const ANALOG_ARR_SIZE_F32: f32 = ANALOG_ARR_SIZE as f32;
 
 /// Contains the state of an analog control (e.g. a potentiometer).
 pub struct AnalogControl<T> {
-    state: [f32; ANALOG_ARR_SIZE],
-    scale: f32,
-    transform: Option<TransformFn>,
+    state: f32,
+    pub scale: f32,
+    pub offset: f32,
     pin: T,
-    index: usize,
 }
 
 impl<T> AnalogControl<T> {
     /// Create a new AnalogControl.
-    pub fn new(pin: T, scale: f32) -> Self {
+    pub fn new(pin: T, scale: f32, offset: f32) -> Self {
         Self {
-            state: [0.0; ANALOG_ARR_SIZE],
+            state: 0f32,
             scale,
-            transform: None,
+            offset,
             pin,
-            index: 0,
         }
-    }
-
-    /// Set the scaling
-    pub fn set_scale(&mut self, scale: f32) {
-        self.scale = scale;
-    }
-
-    /// Provide an optional transformation function.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// // Transform linear input into logarithmic
-    /// let mut control1 = hid::AnalogControl::new(daisy15, adc1_max);
-    /// control1.set_transform(|x| x * x);
-    /// ```
-    pub fn set_transform(&mut self, transform: TransformFn) {
-        self.transform = Some(transform);
     }
 
     /// Update control value. This should be called on a timer.
@@ -215,23 +195,17 @@ impl<T> AnalogControl<T> {
     /// }
     /// ```
     pub fn update(&mut self, value: u32) {
-        self.state[self.index] = value as f32 / self.scale;
-        self.index = (self.index + 1) % ANALOG_ARR_SIZE;
+        self.state = self.offset + value as f32 * self.scale;
     }
 
     /// Get the value of the control with any applied scaling and/or
     /// transformation.
-    pub fn get_value(&self) -> f32 {
-        let mut value = self.state.iter().sum();
-        value /= ANALOG_ARR_SIZE_F32;
-        if let Some(tfn) = self.transform {
-            value = tfn(value);
-        }
-        value
+    pub fn value(&self) -> f32 {
+        self.state
     }
 
     /// Get the pin associated with this control.
-    pub fn get_pin(&mut self) -> &mut T {
+    pub fn pin(&mut self) -> &mut T {
         &mut self.pin
     }
 }
@@ -273,13 +247,7 @@ where
 
     /// Set the brightness of the LED from 0.0 to 1.0.
     pub fn set_brightness(&mut self, value: f32) {
-        let value = if value > 1.0 {
-            1.0
-        } else if value < 0.0 {
-            0.0
-        } else {
-            value
-        };
+        let value = value.clamp(0f32, 1f32);
         match self.invert {
             // Bias for slower transitions in the low brightness range
             // TODO configurable?

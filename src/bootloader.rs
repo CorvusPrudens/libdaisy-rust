@@ -245,7 +245,8 @@ pub fn reset_to_bootloader(boot_type: BootType, scb: &SCB, delay: &mut Delay) ->
         }
         BootType::Daisy(daisy_type) => {
             let region = MemoryRegion::from_vtable(scb);
-            if region.is_some_and(|r| r == MemoryRegion::InternalFlash) {
+
+            if matches!(region, Some(MemoryRegion::InternalFlash)) {
                 panic!("Attempted to jump to non-existent Daisy bootloader");
             }
 

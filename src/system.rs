@@ -48,6 +48,145 @@ pub struct System {
     pub delay: Delay,
 }
 
+pub struct MinimalSystem {
+    pub gpio: crate::gpio::GPIO,
+    pub flash: crate::flash::Flash,
+    pub internal_usb: Option<InternalUsbPins>,
+    pub delay: Delay,
+}
+
+pub fn initialize_backup_sram(pwr: &mut stm32::PWR, rcc: &mut stm32::RCC) {
+    pwr.cr1.modify(|_, w| w.dbp().set_bit());
+    pwr.cr2.modify(|_, w| w.bren().set_bit());
+
+    loop {
+        if pwr.cr1.read().dbp().bit_is_set() {
+            break;
+        }
+    }
+
+    rcc.ahb4enr.modify(|_, w| w.bkpramen().set_bit());
+    // read it back
+    let _bit = rcc.ahb4enr.read().bkpramen().bit();
+}
+
+impl MinimalSystem {
+    /// Initialize clocks
+    pub fn init_clocks(
+        mut pwr: stm32::PWR,
+        mut rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+    ) -> rcc::Ccdr {
+        // Power
+        initialize_backup_sram(&mut pwr, &mut rcc);
+        let pwr = pwr.constrain();
+        let vos = pwr.vos0(syscfg).freeze();
+
+        rcc.constrain()
+            .use_hse(HSE_CLOCK_MHZ.convert())
+            .sys_ck(CLOCK_RATE_HZ)
+            .pclk1(PCLK_HZ) // DMA clock
+            // PLL1
+            .pll1_strategy(rcc::PllConfigStrategy::Iterative)
+            .pll1_p_ck(PLL1_P_HZ)
+            .pll1_q_ck(PLL1_Q_HZ)
+            .pll1_r_ck(PLL1_R_HZ)
+            // PLL2
+            .pll2_p_ck(PLL2_P_HZ) // Default adc_ker_ck_input
+            // .pll2_q_ck(PLL2_Q_HZ)
+            // .pll2_r_ck(PLL2_R_HZ)
+            // PLL3
+            .pll3_strategy(rcc::PllConfigStrategy::Fractional)
+            .pll3_p_ck(PLL3_P_HZ) // used for SAI1
+            .pll3_q_ck(PLL3_Q_HZ)
+            .pll3_r_ck(PLL3_R_HZ)
+            .freeze(vos, syscfg)
+    }
+
+    pub fn new(resources: SystemResources) -> Self {
+        let mut delay = Delay::new(resources.syst, *resources.clocks);
+
+        let gpioa = resources.gpioa.split(resources.gpioa_rec);
+        let gpiob = resources.gpiob.split(resources.gpiob_rec);
+        let gpioc = resources.gpioc.split(resources.gpioc_rec);
+        let gpiod = resources.gpiod.split(resources.gpiod_rec);
+        let gpioe = resources.gpioe.split(resources.gpioe_rec);
+        let gpiof = resources.gpiof.split(resources.gpiof_rec);
+        let gpiog = resources.gpiog.split(resources.gpiog_rec);
+        let gpioh = resources.gpioh.split(resources.gpioh_rec);
+        let gpioi = resources.gpioi.split(resources.gpioi_rec);
+
+        // Set up GPIOs
+        let gpio = crate::gpio::GPIO::init(
+            gpioc.pc7,
+            gpiog.pg3,
+            Some(gpiob.pb12),
+            Some(gpioc.pc11),
+            Some(gpioc.pc10),
+            Some(gpioc.pc9),
+            Some(gpioc.pc8),
+            Some(gpiod.pd2),
+            Some(gpioc.pc12),
+            Some(gpiog.pg10),
+            Some(gpiog.pg11),
+            Some(gpiob.pb4),
+            Some(gpiob.pb5),
+            Some(gpiob.pb8),
+            Some(gpiob.pb9),
+            Some(gpiob.pb6),
+            Some(gpiob.pb7),
+            Some(gpioc.pc0),
+            Some(gpioa.pa3),
+            Some(gpiob.pb1),
+            Some(gpioa.pa7),
+            Some(gpioa.pa6),
+            Some(gpioc.pc1),
+            Some(gpioc.pc4),
+            Some(gpioa.pa5),
+            Some(gpioa.pa4),
+            Some(gpioa.pa1),
+            Some(gpioa.pa0),
+            Some(gpiod.pd11),
+            Some(gpiog.pg9),
+            Some(gpioa.pa2),
+            Some(gpiob.pb14),
+            Some(gpiob.pb15),
+            None,
+            None,
+        );
+
+        System::init_debug(resources.dcb, resources.dwt);
+
+        // set up flash
+        let flash = crate::flash::Flash::new(
+            resources.qspi,
+            resources.qspi_rec,
+            resources.clocks,
+            gpiof.pf6,
+            gpiof.pf7,
+            gpiof.pf8,
+            gpiof.pf9,
+            gpiof.pf10,
+            gpiog.pg6,
+        );
+
+        info!("Minimal system initialization complete.");
+
+        // grab internal usb pins
+        let internal_usb = InternalUsbPins {
+            dp: gpioa.pa12,
+            dm: gpioa.pa11,
+        };
+
+        Self {
+            gpio,
+            flash,
+            internal_usb: Some(internal_usb),
+            delay,
+        }
+    }
+}
+
 pub struct InternalUsbPins {
     pub dp: gpio::gpioa::PA12<gpio::Analog>,
     pub dm: gpio::gpioa::PA11<gpio::Analog>,
@@ -160,6 +299,55 @@ macro_rules! system_init {
     }};
 }
 
+#[macro_export]
+macro_rules! minimal_init {
+    ($core:ident, $device:ident, $ccdr:ident) => {{
+        let resources = ::libdaisy::system::SystemResources {
+            clocks: &$ccdr.clocks,
+            adc1: $device.ADC1,
+            adc2: $device.ADC2,
+            adc12_rec: $ccdr.peripheral.ADC12,
+            syst: $core.SYST,
+            mpu: &mut $core.MPU,
+            scb: &mut $core.SCB,
+            dcb: &mut $core.DCB,
+            dwt: &mut $core.DWT,
+            fmc: $device.FMC,
+            fmc_rec: $ccdr.peripheral.FMC,
+            i2c2: $device.I2C2,
+            i2c2_rec: $ccdr.peripheral.I2C2,
+            cpuid: &mut $core.CPUID,
+            qspi: $device.QUADSPI,
+            qspi_rec: $ccdr.peripheral.QSPI,
+            sai1: $device.SAI1,
+            sai1_rec: $ccdr.peripheral.SAI1,
+            gpioa: $device.GPIOA,
+            gpioa_rec: $ccdr.peripheral.GPIOA,
+            gpiob: $device.GPIOB,
+            gpiob_rec: $ccdr.peripheral.GPIOB,
+            gpioc: $device.GPIOC,
+            gpioc_rec: $ccdr.peripheral.GPIOC,
+            gpiod: $device.GPIOD,
+            gpiod_rec: $ccdr.peripheral.GPIOD,
+            gpioe: $device.GPIOE,
+            gpioe_rec: $ccdr.peripheral.GPIOE,
+            gpiof: $device.GPIOF,
+            gpiof_rec: $ccdr.peripheral.GPIOF,
+            gpiog: $device.GPIOG,
+            gpiog_rec: $ccdr.peripheral.GPIOG,
+            gpioh: $device.GPIOH,
+            gpioh_rec: $ccdr.peripheral.GPIOH,
+            gpioi: $device.GPIOI,
+            gpioi_rec: $ccdr.peripheral.GPIOI,
+            dma1: $device.DMA1,
+            dma1_rec: $ccdr.peripheral.DMA1,
+            block_size: 0,
+        };
+
+        ::libdaisy::system::MinimalSystem::new(resources)
+    }};
+}
+
 #[derive(Clone, Copy)]
 pub enum Version {
     Seed,
@@ -189,8 +377,13 @@ impl System {
     }
 
     /// Initialize clocks
-    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
+    pub fn init_clocks(
+        mut pwr: stm32::PWR,
+        mut rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+    ) -> rcc::Ccdr {
         // Power
+        initialize_backup_sram(&mut pwr, &mut rcc);
         let pwr = pwr.constrain();
         let vos = pwr.vos0(syscfg).freeze();
 

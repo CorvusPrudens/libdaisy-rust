@@ -1,5 +1,11 @@
 //! Audio module. Handles audio startup and I/O.
 //! As well as converting between the S24 input and f32 for processing.
+
+// This is a temporary measure for the TX and RX BUFFER
+// items. More properly, they should be `UnsafeSyncCell<[0; DMA_BUFFER_SIZE]>`,
+// but this type is unstable.
+#![allow(static_mut_refs)]
+
 use core::convert::Infallible;
 use cortex_m::prelude::_embedded_hal_blocking_i2c_Write;
 use log::info;

@@ -1,6 +1,5 @@
-//!Configure MPU
+//! Configure MPU
 
-///
 /// Based on example from:
 /// https://github.com/richardeoin/stm32h7-fmc/blob/master/examples/stm32h747i-disco.rs
 ///
@@ -10,7 +9,7 @@
 ///
 /// Function will panic if `size` is not a power of 2. Function
 /// will panic if `size` is not at least 32 bytes.
-
+///
 /// Refer to ARM®v7-M Architecture Reference Manual ARM DDI 0403
 /// Version E.b Section B3.5
 use log::info;

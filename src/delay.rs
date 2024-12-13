@@ -23,6 +23,7 @@ pub use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 /// // type to help Rust resolve the trait.
 /// delay.delay_ms(10u8);
 /// ```
+#[derive(Default)]
 pub struct CycleDelay;
 
 impl CycleDelay {

@@ -295,6 +295,7 @@ impl Audio {
             }
             crate::system::Version::Seed2DFM | crate::system::Version::Seed => {
                 let dma_buffer_size = block_size * 2 * 2;
+
                 let rx_buffer: &'static mut [u32] =
                     unsafe { &mut RX_BUFFER.as_mut_slice()[..dma_buffer_size] };
                 let dma_config = dma::dma::DmaConfig::default()
@@ -368,18 +369,20 @@ impl Audio {
                     _ => unreachable!(),
                 }
 
-                info!("Start audio stream...");
-                input_stream.start(|_sai1_rb| {
-                    sai.enable_dma(SaiChannel::ChannelB);
-                });
-
                 // There is no need to wait in this configuration.
                 output_stream.start(|_sai1_rb| {
                     sai.enable_dma(SaiChannel::ChannelA);
                 });
 
+                // Not sure why exactly, but enabling SAI before the input DMA stream
+                // will properly order the input channels.
                 info!("Audio started!");
                 sai.enable();
+
+                info!("Start audio stream...");
+                input_stream.start(|_sai1_rb| {
+                    sai.enable_dma(SaiChannel::ChannelB);
+                });
 
                 let max_transfer_size = block_size * 2;
                 let input = Input::new(
@@ -429,14 +432,14 @@ impl Audio {
                     false
                 }
             }
-            AudioStream::S2dfm { input, .. } => {
-                if input.get_half_transfer_flag() {
-                    input.clear_half_transfer_interrupt();
+            AudioStream::S2dfm { output, .. } => {
+                if output.get_half_transfer_flag() {
+                    output.clear_half_transfer_interrupt();
                     self.input.set_index(0);
                     self.output.set_index(0);
                     true
-                } else if input.get_transfer_complete_flag() {
-                    input.clear_transfer_complete_interrupt();
+                } else if output.get_transfer_complete_flag() {
+                    output.clear_transfer_complete_interrupt();
                     self.input.set_index(self.max_transfer_size);
                     self.output.set_index(self.max_transfer_size);
                     true
@@ -508,6 +511,23 @@ impl Audio {
         }
 
         Ok(())
+    }
+
+    pub fn passthrough(&mut self) {
+        if self.read() {
+            let input = self.input.buffer
+                [self.input.index..self.input.index + self.max_transfer_size]
+                .chunks_exact(2);
+
+            let output = self.output.buffer
+                [self.output.index..self.output.index + self.max_transfer_size]
+                .chunks_exact_mut(2);
+
+            for (input, output) in input.zip(output) {
+                output[0] = input[0];
+                output[1] = input[1];
+            }
+        }
     }
 
     /// Push data to the DMA buffer for output

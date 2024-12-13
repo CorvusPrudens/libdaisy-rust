@@ -222,9 +222,7 @@ impl Flash {
                 self.state = FlashState::Erasing(op);
                 Ok(())
             }
-            _ => {
-                return Err(nbError::WouldBlock);
-            }
+            _ => Err(nbError::WouldBlock),
         }
     }
 

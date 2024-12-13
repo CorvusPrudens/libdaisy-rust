@@ -1,7 +1,7 @@
 //! Types and functions for interfacing with the Daisy bootloader.
 
 use core::mem::MaybeUninit;
-use stm32h7xx_hal::pac::SCB;
+use stm32h7xx_hal::pac::{CPUID, SCB};
 
 #[link_section = ".boot_info"]
 static mut BOOT_INFO: MaybeUninit<[u32; 4]> = MaybeUninit::uninit();
@@ -117,7 +117,7 @@ impl DaisyBootType {
         Self::from_bits(boot_word)
     }
 
-    fn to_bits(&self) -> u32 {
+    fn to_bits(self) -> u32 {
         match self {
             Self::Jump => 0xDEADBEEF,
             Self::SkipTimeout => 0x5AFEB007,
@@ -138,6 +138,11 @@ impl DaisyBootType {
     }
 
     /// Write the boot type to backup SRAM.
+    ///
+    /// # Safety
+    ///
+    /// Writing this value sets bits in backup SRAM directly,
+    /// the XOR mutable aliasing is not guaranteed.
     unsafe fn write(&self) {
         let mut info = unsafe { get_info() };
         info[0] = self.to_bits();
@@ -147,6 +152,11 @@ impl DaisyBootType {
     }
 
     /// Write an invalid bit pattern to backup SRAM, effectively clearing the boot type.
+    ///
+    /// # Safety
+    ///
+    /// Writing this value sets bits in backup SRAM directly,
+    /// the XOR mutable aliasing is not guaranteed.
     pub unsafe fn clear() {
         let mut info = unsafe { get_info() };
         info[0] = 0;
@@ -185,7 +195,7 @@ impl Version {
         }
     }
 
-    fn to_bits(&self) -> u32 {
+    fn to_bits(self) -> u32 {
         match self {
             Self::LessThanV6 => 0,
             Self::V6 => 2,
@@ -221,6 +231,11 @@ pub fn application_address() -> Option<u32> {
 /// Set the target application entry point.
 ///
 /// This also sets the boot type to `Jump`.
+///
+/// # Safety
+///
+/// Writing this value sets bits in backup SRAM directly,
+/// the XOR mutable aliasing is not guaranteed.
 pub unsafe fn set_application_address(address: u32) {
     let boot_type = DaisyBootType::Jump;
     unsafe { boot_type.write() };
@@ -240,6 +255,11 @@ pub fn panic_count() -> u32 {
 }
 
 /// Set the panic count.
+///
+/// # Safety
+///
+/// Writing this value sets bits in backup SRAM directly,
+/// the XOR mutable aliasing is not guaranteed.
 pub unsafe fn set_panic_count(value: u32) {
     let mut info = unsafe { get_info() };
     info[3] = value;
@@ -280,7 +300,7 @@ pub fn reset_to_bootloader(boot_type: BootType) -> ! {
     //
     // This should probably be split out into an unsafe reset function.
     let mut scb: SCB = unsafe { core::mem::transmute(()) };
-    let mut cpuid = unsafe { core::mem::transmute(()) };
+    let mut cpuid = unsafe { core::mem::transmute::<(), CPUID>(()) };
     scb.disable_dcache(&mut cpuid);
 
     match boot_type {

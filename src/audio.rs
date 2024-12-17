@@ -137,7 +137,7 @@ pub struct Audio {
     sai: sai::Sai<stm32::SAI1, sai::I2S>,
     input: Input,
     output: Output,
-    audio_stream: AudioStream,
+    pub audio_stream: AudioStream,
     max_transfer_size: usize,
 }
 
@@ -303,6 +303,8 @@ impl Audio {
                     .memory_increment(true)
                     .peripheral_increment(false)
                     .circular_buffer(true)
+                    .transfer_complete_interrupt(true)
+                    .half_transfer_interrupt(true)
                     .fifo_enable(false);
                 let mut output_stream = dma::Transfer::init(
                     dma1_stream0,
@@ -417,7 +419,9 @@ impl Audio {
     fn read(&mut self) -> bool {
         // Check interrupt(s)
         match &mut self.audio_stream {
-            AudioStream::Normal { input, .. } => {
+            AudioStream::Normal { input, output } => {
+                output.clear_interrupts();
+
                 if input.get_half_transfer_flag() {
                     input.clear_half_transfer_interrupt();
                     self.input.set_index(0);
@@ -432,7 +436,9 @@ impl Audio {
                     false
                 }
             }
-            AudioStream::S2dfm { output, .. } => {
+            AudioStream::S2dfm { output, input } => {
+                input.clear_interrupts();
+
                 if output.get_half_transfer_flag() {
                     output.clear_half_transfer_interrupt();
                     self.input.set_index(0);
@@ -446,6 +452,21 @@ impl Audio {
                 } else {
                     false
                 }
+            }
+        }
+    }
+
+    /// Check interrupts without clearing flags.
+    pub fn peek_read(&mut self) -> bool {
+        // Check interrupt(s)
+        match &mut self.audio_stream {
+            AudioStream::Normal { input, output } => {
+                output.clear_interrupts();
+                input.get_half_transfer_flag() || input.get_transfer_complete_flag()
+            }
+            AudioStream::S2dfm { output, input } => {
+                input.clear_interrupts();
+                output.get_half_transfer_flag() || output.get_transfer_complete_flag()
             }
         }
     }

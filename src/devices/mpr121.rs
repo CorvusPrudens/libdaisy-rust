@@ -10,22 +10,34 @@ pub struct Mpr121 {
     analog_states: [f32; 12],
 }
 
+#[derive(Debug)]
+pub enum I2cError<W, WR> {
+    Write(W),
+    WriteRead(WR),
+}
+
+pub type WriteReadError<W: Write + WriteRead> =
+    I2cError<<W as Write>::Error, <W as WriteRead>::Error>;
+
 impl Mpr121 {
     pub fn new<W: Write + WriteRead>(
         address: u8,
         touch_threshold: u8,
         release_threshold: u8,
         bus: &mut W,
-    ) -> Result<Self, W::Error> {
+    ) -> Result<Self, WriteReadError<W>> {
         let mut mpr = Mpr121 {
             address,
-            thresholds: [Default::default(); 12],
+            thresholds: [Mpr121Thresholds {
+                touch: touch_threshold,
+                release: release_threshold,
+            }; 12],
             states: Default::default(),
             analog_states: [0.0; 12],
         };
 
         mpr.write(bus, Register::SoftReset, 0x63)?;
-        crate::delay::CycleDelay::new().delay_ms(1);
+        crate::delay::CycleDelay::new().delay_ms(1u8);
 
         mpr.write(bus, Register::Ecr, 0x0)?;
 
@@ -51,6 +63,8 @@ impl Mpr121 {
                                       // amount of electrodes running (12)
         mpr.write(bus, Register::Ecr, ecr_settings)?; // start with above ECR setting
 
+        mpr.write_thresholds(bus)?;
+
         Ok(mpr)
     }
 
@@ -59,7 +73,7 @@ impl Mpr121 {
         bus: &mut W,
         register: Register,
         data: u8,
-    ) -> Result<(), W::Error> {
+    ) -> Result<(), WriteReadError<W>> {
         self.write_raw(bus, register as u8, data)
     }
 
@@ -68,7 +82,7 @@ impl Mpr121 {
         bus: &mut W,
         register: u8,
         data: u8,
-    ) -> Result<(), W::Error> {
+    ) -> Result<(), WriteReadError<W>> {
         // first get the current set value of the MPR121_ECR register
         let ecr_reg = Register::Ecr as u8;
         let mut ecr_backup = 0;
@@ -77,45 +91,54 @@ impl Mpr121 {
             self.address,
             &[Register::Ecr as u8],
             core::slice::from_mut(&mut ecr_backup),
-        )?;
+        )
+        .map_err(I2cError::WriteRead)?;
 
         // MPR121 must be put in Stop Mode to write to most registers
-        let stop_required = !((register == Register::Ecr) || ((0x73 <= reg) && (reg <= 0x7A)));
+        let stop_required =
+            !((register == Register::Ecr as u8) || ((0x73 <= register) && (register <= 0x7A)));
 
         if stop_required {
             // clear this register to set stop mode
-            bus.write(self.address, &[Register::Ecr as u8, 0x00])?;
+            bus.write(self.address, &[Register::Ecr as u8, 0x00])
+                .map_err(I2cError::Write)?;
         }
 
-        bus.write(self.address, &[register, data])?;
+        bus.write(self.address, &[register, data])
+            .map_err(I2cError::Write)?;
 
         if stop_required {
             // write back the previous set ECR settings
-            bus.write(self.address, &[Register::Ecr as u8, ecr_backup])?;
+            bus.write(self.address, &[Register::Ecr as u8, ecr_backup])
+                .map_err(I2cError::Write)?;
         }
 
         Ok(())
     }
 
-    fn read<W: WriteRead>(
+    fn read<W: Write + WriteRead>(
         &self,
         bus: &mut W,
         register: Register,
         buffer: &mut [u8],
-    ) -> Result<(), W::Error> {
+    ) -> Result<(), WriteReadError<W>> {
         self.read_raw(bus, register as u8, buffer)
     }
 
-    fn read_raw<W: WriteRead>(
+    fn read_raw<W: Write + WriteRead>(
         &self,
         bus: &mut W,
         register: u8,
         buffer: &mut [u8],
-    ) -> Result<(), W::Error> {
+    ) -> Result<(), WriteReadError<W>> {
         bus.write_read(self.address, &[register], buffer)
+            .map_err(I2cError::WriteRead)
     }
 
-    pub fn write_thresholds<W: Write + WriteRead>(&self, bus: &mut W) -> Result<(), W::Error> {
+    pub fn write_thresholds<W: Write + WriteRead>(
+        &self,
+        bus: &mut W,
+    ) -> Result<(), WriteReadError<W>> {
         for (i, Mpr121Thresholds { touch, release }) in self.thresholds.iter().enumerate() {
             let touch_register = Register::TouchTh0 as usize + i * 2;
             let release_register = Register::ReleaseTh0 as usize + i * 2;
@@ -127,11 +150,11 @@ impl Mpr121 {
         Ok(())
     }
 
-    pub fn update<W: Write + WriteRead>(&self, bus: &mut W) -> Result<(), W::Error> {
+    pub fn update<W: Write + WriteRead>(&mut self, bus: &mut W) -> Result<(), WriteReadError<W>> {
         let mut buffer = [0u8; 2];
         self.read(bus, Register::TouchStatusL, &mut buffer)?;
 
-        self.states = TouchStates(u16::from_le_bytes(&buffer));
+        self.states = TouchStates(u16::from_le_bytes(buffer));
         let u10_scale = 1.0 / (1 << 10) as f32;
 
         for i in 0..self.analog_states.len() {
@@ -139,7 +162,7 @@ impl Mpr121 {
             self.read_raw(bus, register as u8, &mut buffer)?;
 
             // the data returned is a 10-bit unsigned value
-            self.analog_states[i] = u16::from_le_bytes(&buffer) as f32 * u10_scale;
+            self.analog_states[i] = u16::from_le_bytes(buffer) as f32 * u10_scale;
         }
 
         Ok(())
@@ -149,7 +172,7 @@ impl Mpr121 {
         self.states
     }
 
-    pub fn analog_state(&self, channel: u8) -> [f32; 12] {
+    pub fn analog_states(&self) -> [f32; 12] {
         self.analog_states
     }
 }
@@ -160,6 +183,10 @@ pub struct TouchStates(u16);
 impl TouchStates {
     pub fn is_touched(&self, channel: u8) -> bool {
         ((self.0 >> channel) & 1) > 0
+    }
+
+    pub fn raw(&self) -> u16 {
+        self.0
     }
 }
 

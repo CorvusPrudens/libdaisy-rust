@@ -16,6 +16,7 @@ pub enum I2cError<W, WR> {
     WriteRead(WR),
 }
 
+#[expect(type_alias_bounds)]
 pub type WriteReadError<W: Write + WriteRead> =
     I2cError<<W as Write>::Error, <W as WriteRead>::Error>;
 
@@ -26,7 +27,7 @@ impl Mpr121 {
         release_threshold: u8,
         bus: &mut W,
     ) -> Result<Self, WriteReadError<W>> {
-        let mut mpr = Mpr121 {
+        let mpr = Mpr121 {
             address,
             thresholds: [Mpr121Thresholds {
                 touch: touch_threshold,
@@ -89,18 +90,17 @@ impl Mpr121 {
 
         bus.write_read(
             self.address,
-            &[Register::Ecr as u8],
+            &[ecr_reg],
             core::slice::from_mut(&mut ecr_backup),
         )
         .map_err(I2cError::WriteRead)?;
 
         // MPR121 must be put in Stop Mode to write to most registers
-        let stop_required =
-            !((register == Register::Ecr as u8) || ((0x73 <= register) && (register <= 0x7A)));
+        let stop_required = !((register == ecr_reg) || (0x73..=0x7A).contains(&register));
 
         if stop_required {
             // clear this register to set stop mode
-            bus.write(self.address, &[Register::Ecr as u8, 0x00])
+            bus.write(self.address, &[ecr_reg, 0x00])
                 .map_err(I2cError::Write)?;
         }
 
@@ -109,7 +109,7 @@ impl Mpr121 {
 
         if stop_required {
             // write back the previous set ECR settings
-            bus.write(self.address, &[Register::Ecr as u8, ecr_backup])
+            bus.write(self.address, &[ecr_reg, ecr_backup])
                 .map_err(I2cError::Write)?;
         }
 

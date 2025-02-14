@@ -31,19 +31,32 @@ impl CycleDelay {
     pub fn new() -> Self {
         CycleDelay
     }
+
+    /// Block for `cycles` processor cycles.
+    pub fn delay_cycles(&mut self, cycles: u32) {
+        delay_cycles(cycles);
+    }
+
+    /// Block for approximately `cycles` nanoseconds.
+    ///
+    /// This is a rough approximation with a resolution
+    /// of about four nanoseconds.
+    pub fn delay_ns(&mut self, ns: u32) {
+        delay_cycles(ns / 4);
+    }
 }
 
 macro_rules! impl_delay {
     ($ty:path) => {
         impl DelayMs<$ty> for CycleDelay {
             fn delay_ms(&mut self, ms: $ty) {
-                delay_cycles((ms as u32).saturating_mul(crate::MILICYCLES));
+                self.delay_cycles((ms as u32).saturating_mul(crate::MILICYCLES));
             }
         }
 
         impl DelayUs<$ty> for CycleDelay {
             fn delay_us(&mut self, us: $ty) {
-                delay_cycles((us as u32).saturating_mul(crate::MICROCYCLES));
+                self.delay_cycles((us as u32).saturating_mul(crate::MICROCYCLES));
             }
         }
     };

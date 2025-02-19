@@ -44,15 +44,15 @@ embedded-hal = "0.2"
 [features]
 default = []
 
-log-itm = ["panic-itm", "lazy_static", "cortex-m-log"]
+log-itm = ["dep:panic-itm", "dep:lazy_static", "dep:cortex-m-log"]
 log-none = []
-log-rtt = ["rtt-target", "panic-rtt-target"]
+log-rtt = ["dep:rtt-target", "dep:panic-rtt-target"]
 log-semihosting = [
-  "panic-semihosting",
-  "lazy_static",
-  "cortex-m-log",
-  "cortex-m-semihosting",
+  "dep:lazy_static",
+  "dep:cortex-m-log",
+  "dep:cortex-m-semihosting",
 ]
+panic-semihosting = ["dep:panic-semihosting"]
 
 # this lets you use `cargo fix`!
 #[[bin]]

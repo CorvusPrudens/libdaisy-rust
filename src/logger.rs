@@ -62,6 +62,7 @@ cfg_if::cfg_if! {
         }
     }
     else if #[cfg(any(feature = "log-semihosting"))] {
+        #[cfg(feature = "panic-semihosting")]
         use panic_semihosting as _;
 
         use lazy_static::lazy_static;

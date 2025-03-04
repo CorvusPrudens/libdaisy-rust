@@ -103,7 +103,7 @@ impl MinimalSystem {
             .freeze(vos, syscfg)
     }
 
-    pub fn new(resources: SystemResources) -> Self {
+    pub fn new(mut resources: SystemResources) -> Self {
         let delay = Delay::new(resources.syst, *resources.clocks);
 
         let gpioa = resources.gpioa.split(resources.gpioa_rec);
@@ -356,20 +356,24 @@ impl System {
     fn detect_version(
         s2dfm_pin: hal::gpio::gpiod::PD4<hal::gpio::Analog>,
         seed1_1_pin: hal::gpio::gpiod::PD3<hal::gpio::Analog>,
+        _seed3_pin: hal::gpio::gpioh::PH6<hal::gpio::Analog>,
     ) -> Version {
-        let s2dfm_pin = s2dfm_pin.into_pull_up_input();
         let seed1_1_pin = seed1_1_pin.into_pull_up_input();
+        let s2dfm_pin = s2dfm_pin.into_pull_up_input();
 
-        let state = (seed1_1_pin.is_low(), s2dfm_pin.is_low());
+        let seed1_1 = seed1_1_pin.is_low();
+        let s2dfm = s2dfm_pin.is_low();
 
         // Deinitialize the pins after reading
         s2dfm_pin.into_analog();
         seed1_1_pin.into_analog();
 
-        match state {
-            (true, _) => Version::Seed1_1,
-            (false, true) => Version::Seed2DFM,
-            _ => Version::Seed,
+        if seed1_1 {
+            Version::Seed1_1
+        } else if s2dfm {
+            Version::Seed2DFM
+        } else {
+            Version::Seed
         }
     }
 
@@ -422,7 +426,7 @@ impl System {
     }
 
     /// Batteries included initialization
-    pub fn init(resources: SystemResources) -> System {
+    pub fn init(mut resources: SystemResources) -> System {
         info!("Starting system init");
         info!("Set up up DMA RAM in DRAM2...");
         crate::mpu::init_dma(
@@ -529,7 +533,7 @@ impl System {
         let dma1_streams = dma::dma::StreamsTuple::new(resources.dma1, resources.dma1_rec);
 
         info!("Set up Audio...");
-        let version = Self::detect_version(gpiod.pd4, gpiod.pd3);
+        let version = Self::detect_version(gpiod.pd4, gpiod.pd3, gpioh.ph6);
 
         let audio = Audio::new(
             dma1_streams.0,

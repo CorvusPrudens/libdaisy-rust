@@ -51,7 +51,7 @@ impl<C, L, D, const SERIES: usize, const PARALLEL: usize>
             clock,
             latch,
             data,
-            delay: 250,
+            delay: 1000,
             bits: [[0u8; SERIES]; PARALLEL],
         }
     }

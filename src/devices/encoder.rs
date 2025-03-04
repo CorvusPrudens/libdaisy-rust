@@ -43,6 +43,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct QuadratureDecoder {
     last_update: u32,
     a: u8,
@@ -95,9 +96,8 @@ impl QuadratureDecoder {
     /// Get the magnitude of the last encoder turn, if any.
     pub fn increment(&self) -> Option<i32> {
         match self.increment {
-            1 => Some(1),
-            -1 => Some(-1),
-            _ => None,
+            0 => None,
+            i => Some(i),
         }
     }
 }

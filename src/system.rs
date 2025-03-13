@@ -103,7 +103,7 @@ impl MinimalSystem {
             .freeze(vos, syscfg)
     }
 
-    pub fn new(mut resources: SystemResources) -> Self {
+    pub fn new(resources: SystemResources) -> Self {
         let delay = Delay::new(resources.syst, *resources.clocks);
 
         let gpioa = resources.gpioa.split(resources.gpioa_rec);
@@ -426,7 +426,7 @@ impl System {
     }
 
     /// Batteries included initialization
-    pub fn init(mut resources: SystemResources) -> System {
+    pub fn init(resources: SystemResources) -> System {
         info!("Starting system init");
         info!("Set up up DMA RAM in DRAM2...");
         crate::mpu::init_dma(

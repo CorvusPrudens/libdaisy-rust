@@ -286,6 +286,18 @@ pub enum BootType {
 /// the program is running from internal flash, meaning
 /// no Daisy bootloader can be present.
 pub fn reset_to_bootloader(boot_type: BootType) -> ! {
+    reset_to_bootloader_with(boot_type, || ())
+}
+
+/// Reset to the provided bootloader, running the provided
+/// closure after data caching is disabled.
+///
+/// # Panics
+///
+/// Panics if the Daisy bootloader is selected but
+/// the program is running from internal flash, meaning
+/// no Daisy bootloader can be present.
+pub fn reset_to_bootloader_with<F: FnOnce()>(boot_type: BootType, f: F) -> ! {
     // # SAFETY
     //
     // SCB and CPUID are zero-sized types. They are passed around
@@ -302,6 +314,11 @@ pub fn reset_to_bootloader(boot_type: BootType) -> ! {
     let mut scb: SCB = unsafe { core::mem::transmute(()) };
     let mut cpuid = unsafe { core::mem::transmute::<(), CPUID>(()) };
     scb.disable_dcache(&mut cpuid);
+
+    cortex_m::asm::dsb();
+    cortex_m::asm::isb();
+
+    f();
 
     match boot_type {
         BootType::Stm(boot_pin) => {

@@ -94,7 +94,7 @@ pub enum AudioStream {
 type StereoIteratorHandle = fn(StereoIterator, &mut Output);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-struct S24(i32);
+pub struct S24(i32);
 
 impl From<i32> for S24 {
     fn from(x: i32) -> S24 {
@@ -529,6 +529,45 @@ impl Audio {
                 output[0] = S24::from(left).into();
                 output[1] = S24::from(right).into();
             }
+        }
+
+        Ok(())
+    }
+
+    /// Process audio block-by-block.
+    #[inline]
+    pub fn for_each_block<F>(&mut self, mut process: F)
+    where
+        F: FnMut(&[u32], &mut [S24]),
+    {
+        self.try_for_each_block::<_, Infallible>(|input, output| Ok(process(input, output)))
+            .unwrap()
+    }
+
+    /// Process audio block-by-block.
+    ///
+    /// If the process closure returns an error,
+    /// it's bubbled up to the callsite of this method.
+    pub fn try_for_each_block<F, E>(&mut self, mut process: F) -> Result<(), E>
+    where
+        F: FnMut(&[u32], &mut [S24]) -> Result<(), E>,
+    {
+        if self.read() {
+            process(
+                &self.input.buffer[self.input.index..self.input.index + self.max_transfer_size],
+                // # Safety
+                //
+                // S24 and u32 are both represented with 32 bits.
+                //
+                // Anything written to this output should be properly clamped using the S24
+                // wrapper.
+                unsafe {
+                    core::mem::transmute(
+                        &mut self.output.buffer
+                            [self.output.index..self.output.index + self.max_transfer_size],
+                    )
+                },
+            )?;
         }
 
         Ok(())

@@ -534,21 +534,21 @@ impl Audio {
         Ok(())
     }
 
-    /// Process audio block-by-block.
+    /// Process audio block.
     #[inline]
-    pub fn for_each_block<F>(&mut self, mut process: F)
+    pub fn process_block<F>(&mut self, mut process: F)
     where
         F: FnMut(&[u32], &mut [S24]),
     {
-        self.try_for_each_block::<_, Infallible>(|input, output| Ok(process(input, output)))
+        self.try_process_block::<_, Infallible>(|input, output| Ok(process(input, output)))
             .unwrap()
     }
 
-    /// Process audio block-by-block.
+    /// Process audio audio block.
     ///
     /// If the process closure returns an error,
     /// it's bubbled up to the callsite of this method.
-    pub fn try_for_each_block<F, E>(&mut self, mut process: F) -> Result<(), E>
+    pub fn try_process_block<F, E>(&mut self, mut process: F) -> Result<(), E>
     where
         F: FnMut(&[u32], &mut [S24]) -> Result<(), E>,
     {
@@ -562,7 +562,7 @@ impl Audio {
                 // Anything written to this output should be properly clamped using the S24
                 // wrapper.
                 unsafe {
-                    core::mem::transmute(
+                    core::mem::transmute::<&mut [u32], &mut [S24]>(
                         &mut self.output.buffer
                             [self.output.index..self.output.index + self.max_transfer_size],
                     )

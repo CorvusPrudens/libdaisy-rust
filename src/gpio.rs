@@ -26,7 +26,7 @@ pub type SeedButton = PG3<Input>;
 
 /// GPIO struct for holding Daisy GPIO pins
 #[allow(clippy::upper_case_acronyms)]
-pub struct GPIO {
+pub struct SeedGPIO {
     pub led: SeedLed,
     pub button: SeedButton,
     pub daisy0: Option<gpio::gpiob::PB12<Analog>>,
@@ -64,7 +64,7 @@ pub struct GPIO {
     pub daisy32: Option<gpio::gpioc::PC3<Analog>>,
 }
 
-impl GPIO {
+impl SeedGPIO {
     /// Initialize the GPIOs
     #[allow(clippy::too_many_arguments)]
     pub fn init(
@@ -103,7 +103,7 @@ impl GPIO {
         daisy30: Option<gpio::gpiob::PB15<Analog>>,
         daisy31: Option<gpio::gpioc::PC2<Analog>>,
         daisy32: Option<gpio::gpioc::PC3<Analog>>,
-    ) -> GPIO {
+    ) -> SeedGPIO {
         let led = seed_led.into_push_pull_output();
         let button = seed_button.into_floating_input();
 
@@ -143,6 +143,123 @@ impl GPIO {
             daisy30,
             daisy31,
             daisy32,
+        }
+    }
+}
+
+pub type PatchSmLed = PC7<Output<PushPull>>;
+pub type PatchSmButton = PG3<Input>;
+
+/// GPIO struct for holding Daisy GPIO pins
+#[allow(clippy::upper_case_acronyms)]
+pub struct PatchSmGPIO {
+    pub led: Option<PatchSmLed>,
+    pub button: PatchSmButton,
+    pub a2: Option<gpio::gpioa::PA1<Analog>>,
+    pub a3: Option<gpio::gpioa::PA0<Analog>>,
+    pub a8: Option<gpio::gpiob::PB14<Analog>>,
+    pub a9: Option<gpio::gpiob::PB15<Analog>>,
+    pub b5: Option<gpio::gpioc::PC14<Analog>>,
+    pub b6: Option<gpio::gpioc::PC13<Analog>>,
+    pub b7: Option<gpio::gpiob::PB8<Analog>>,
+    pub b8: Option<gpio::gpiob::PB9<Analog>>,
+    pub b9: Option<gpio::gpiog::PG14<Analog>>,
+    pub b10: Option<gpio::gpiog::PG13<Analog>>,
+    pub c1: Option<gpio::gpioa::PA5<Analog>>,
+    pub c2: Option<gpio::gpioa::PA7<Analog>>,
+    pub c3: Option<gpio::gpioa::PA2<Analog>>,
+    pub c4: Option<gpio::gpioa::PA6<Analog>>,
+    pub c5: Option<gpio::gpioa::PA3<Analog>>,
+    pub c6: Option<gpio::gpiob::PB1<Analog>>,
+    pub c7: Option<gpio::gpioc::PC4<Analog>>,
+    pub c8: Option<gpio::gpioc::PC0<Analog>>,
+    pub c9: Option<gpio::gpioc::PC1<Analog>>,
+    pub c10: Option<gpio::gpioa::PA4<Analog>>,
+    pub d1: Option<gpio::gpiob::PB4<Alternate<0>>>,
+    pub d2: Option<gpio::gpioc::PC11<Analog>>,
+    pub d3: Option<gpio::gpioc::PC10<Analog>>,
+    pub d4: Option<gpio::gpioc::PC9<Analog>>,
+    pub d5: Option<gpio::gpioc::PC8<Analog>>,
+    pub d6: Option<gpio::gpioc::PC12<Analog>>,
+    pub d7: Option<gpio::gpiod::PD2<Analog>>,
+    pub d8: Option<gpio::gpioc::PC2<Analog>>,
+    pub d9: Option<gpio::gpioc::PC3<Analog>>,
+    pub d10: Option<gpio::gpiod::PD3<Analog>>,
+}
+
+impl PatchSmGPIO {
+    /// Initialize the GPIOs
+    #[allow(clippy::too_many_arguments)]
+    pub fn init(
+        patch_sm_led: gpio::gpioc::PC7<Analog>,
+        patch_sm_button: gpio::gpiog::PG3<Analog>,
+        a2: Option<gpio::gpioa::PA1<Analog>>,
+        a3: Option<gpio::gpioa::PA0<Analog>>,
+        a8: Option<gpio::gpiob::PB14<Analog>>,
+        a9: Option<gpio::gpiob::PB15<Analog>>,
+        b5: Option<gpio::gpioc::PC14<Analog>>,
+        b6: Option<gpio::gpioc::PC13<Analog>>,
+        b7: Option<gpio::gpiob::PB8<Analog>>,
+        b8: Option<gpio::gpiob::PB9<Analog>>,
+        b9: Option<gpio::gpiog::PG14<Analog>>,
+        b10: Option<gpio::gpiog::PG13<Analog>>,
+        c1: Option<gpio::gpioa::PA5<Analog>>,
+        c2: Option<gpio::gpioa::PA7<Analog>>,
+        c3: Option<gpio::gpioa::PA2<Analog>>,
+        c4: Option<gpio::gpioa::PA6<Analog>>,
+        c5: Option<gpio::gpioa::PA3<Analog>>,
+        c6: Option<gpio::gpiob::PB1<Analog>>,
+        c7: Option<gpio::gpioc::PC4<Analog>>,
+        c8: Option<gpio::gpioc::PC0<Analog>>,
+        c9: Option<gpio::gpioc::PC1<Analog>>,
+        c10: Option<gpio::gpioa::PA4<Analog>>,
+        d1: Option<gpio::gpiob::PB4<Alternate<0>>>,
+        d2: Option<gpio::gpioc::PC11<Analog>>,
+        d3: Option<gpio::gpioc::PC10<Analog>>,
+        d4: Option<gpio::gpioc::PC9<Analog>>,
+        d5: Option<gpio::gpioc::PC8<Analog>>,
+        d6: Option<gpio::gpioc::PC12<Analog>>,
+        d7: Option<gpio::gpiod::PD2<Analog>>,
+        d8: Option<gpio::gpioc::PC2<Analog>>,
+        d9: Option<gpio::gpioc::PC3<Analog>>,
+        d10: Option<gpio::gpiod::PD3<Analog>>,
+    ) -> PatchSmGPIO {
+        let led = patch_sm_led.into_push_pull_output();
+        let button = patch_sm_button.into_floating_input();
+
+        Self {
+            led: Some(led),
+            button,
+            a2,
+            a3,
+            a8,
+            a9,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            c1,
+            c2,
+            c3,
+            c4,
+            c5,
+            c6,
+            c7,
+            c8,
+            c9,
+            c10,
+            d1,
+            d2,
+            d3,
+            d4,
+            d5,
+            d6,
+            d7,
+            d8,
+            d9,
+            d10,
         }
     }
 }

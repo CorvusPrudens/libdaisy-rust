@@ -29,8 +29,8 @@ mod app {
 
         let mut core = ctx.core;
         let device = ctx.device;
-        let ccdr = system::System::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
-        let system = libdaisy::system_init!(core, device, ccdr);
+        let ccdr = system::SeedSystem::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
+        let system = libdaisy::seed_system_init!(core, device, ccdr);
         let buffer = [(0.0, 0.0); audio::BLOCK_SIZE_MAX];
 
         info!("Startup done!");

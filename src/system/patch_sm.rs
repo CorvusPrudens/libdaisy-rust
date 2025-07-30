@@ -1,106 +1,34 @@
-//! Contains setup for Daisy board hardware.
-#![allow(dead_code)]
-
-use hal::rcc::CoreClocks;
 use log::info;
-use stm32h7xx_hal::{
-    adc,
-    delay::Delay,
-    dma, gpio,
-    prelude::*,
-    rcc, stm32,
-    time::{Hertz, MegaHertz},
-};
+use stm32h7xx_hal::{adc, dac, delay::Delay, dma, prelude::*, rcc, stm32};
 
 use crate::{audio::Audio, *};
 
-const START_OF_DRAM2: u32 = 0x30000000;
-const DMA_MEM_SIZE: usize = 32 * 1024;
+use super::*;
 
-const HSE_CLOCK_MHZ: MegaHertz = MegaHertz::from_raw(16);
-const HCLK_MHZ: MegaHertz = MegaHertz::from_raw(200);
-const HCLK2_MHZ: MegaHertz = MegaHertz::from_raw(200);
-
-// PCLKx
-const PCLK_HZ: Hertz = Hertz::from_raw(CLOCK_RATE_HZ.raw() / 4);
-// 49_152_344
-// PLL1
-const PLL1_P_HZ: Hertz = CLOCK_RATE_HZ;
-const PLL1_Q_HZ: Hertz = Hertz::from_raw(CLOCK_RATE_HZ.raw() / 18);
-const PLL1_R_HZ: Hertz = Hertz::from_raw(CLOCK_RATE_HZ.raw() / 32);
-// PLL2
-const PLL2_P_HZ: Hertz = Hertz::from_raw(4_000_000);
-const PLL2_Q_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 2); // No divder given, what's the default?
-const PLL2_R_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 4); // No divder given, what's the default?
-
-const PLL3_P_HZ: Hertz = Hertz::from_raw(AUDIO_SAMPLE_HZ.raw() * 257);
-const PLL3_Q_HZ: Hertz = Hertz::from_raw(PLL3_P_HZ.raw());
-const PLL3_R_HZ: Hertz = Hertz::from_raw(PLL3_P_HZ.raw());
-
-pub struct System {
-    pub gpio: crate::gpio::GPIO,
+pub struct PatchSmSystem {
+    pub gpio: crate::gpio::PatchSmGPIO,
     pub audio: audio::Audio,
     pub adc1: adc::Adc<stm32::ADC1, adc::Disabled>,
     pub adc2: adc::Adc<stm32::ADC2, adc::Disabled>,
+    pub c1: Option<dac::C1<stm32::DAC, dac::Disabled>>,
+    pub c2: Option<dac::C2<stm32::DAC, dac::Disabled>>,
     pub sdram: &'static mut [f32],
     pub flash: crate::flash::Flash,
     pub internal_usb: Option<InternalUsbPins>,
     pub delay: Delay,
 }
 
-pub struct MinimalSystem {
-    pub gpio: crate::gpio::GPIO,
+pub struct MinimalPatchSmSystem {
+    pub gpio: crate::gpio::PatchSmGPIO,
     pub flash: crate::flash::Flash,
     pub internal_usb: Option<InternalUsbPins>,
     pub delay: Delay,
 }
 
-pub fn initialize_backup_sram(pwr: &mut stm32::PWR, rcc: &mut stm32::RCC) {
-    pwr.cr1.modify(|_, w| w.dbp().set_bit());
-    pwr.cr2.modify(|_, w| w.bren().set_bit());
-
-    loop {
-        if pwr.cr1.read().dbp().bit_is_set() {
-            break;
-        }
-    }
-
-    rcc.ahb4enr.modify(|_, w| w.bkpramen().set_bit());
-    // read it back
-    let _bit = rcc.ahb4enr.read().bkpramen().bit();
-}
-
-impl MinimalSystem {
+impl MinimalPatchSmSystem {
     /// Initialize clocks
-    pub fn init_clocks(
-        mut pwr: stm32::PWR,
-        mut rcc: stm32::RCC,
-        syscfg: &stm32::SYSCFG,
-    ) -> rcc::Ccdr {
-        // Power
-        initialize_backup_sram(&mut pwr, &mut rcc);
-        let pwr = pwr.constrain();
-        let vos = pwr.vos0(syscfg).freeze();
-
-        rcc.constrain()
-            .use_hse(HSE_CLOCK_MHZ.convert())
-            .sys_ck(CLOCK_RATE_HZ)
-            .pclk1(PCLK_HZ) // DMA clock
-            // PLL1
-            .pll1_strategy(rcc::PllConfigStrategy::Iterative)
-            .pll1_p_ck(PLL1_P_HZ)
-            .pll1_q_ck(PLL1_Q_HZ)
-            .pll1_r_ck(PLL1_R_HZ)
-            // PLL2
-            .pll2_p_ck(PLL2_P_HZ) // Default adc_ker_ck_input
-            // .pll2_q_ck(PLL2_Q_HZ)
-            // .pll2_r_ck(PLL2_R_HZ)
-            // PLL3
-            .pll3_strategy(rcc::PllConfigStrategy::Fractional)
-            .pll3_p_ck(PLL3_P_HZ) // used for SAI1
-            .pll3_q_ck(PLL3_Q_HZ)
-            .pll3_r_ck(PLL3_R_HZ)
-            .freeze(vos, syscfg)
+    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg)
     }
 
     pub fn new(resources: SystemResources) -> Self {
@@ -114,45 +42,42 @@ impl MinimalSystem {
         let gpiog = resources.gpiog.split(resources.gpiog_rec);
 
         // Set up GPIOs
-        let gpio = crate::gpio::GPIO::init(
+        let gpio = crate::gpio::PatchSmGPIO::init(
             gpioc.pc7,
             gpiog.pg3,
-            Some(gpiob.pb12),
+            Some(gpioa.pa1),
+            Some(gpioa.pa0),
+            Some(gpiob.pb14),
+            Some(gpiob.pb15),
+            Some(gpioc.pc14),
+            Some(gpioc.pc13),
+            Some(gpiob.pb8),
+            Some(gpiob.pb9),
+            Some(gpiog.pg14),
+            Some(gpiog.pg13),
+            None,
+            Some(gpioa.pa7),
+            Some(gpioa.pa2),
+            Some(gpioa.pa6),
+            Some(gpioa.pa3),
+            Some(gpiob.pb1),
+            Some(gpioc.pc4),
+            Some(gpioc.pc0),
+            Some(gpioc.pc1),
+            None,
+            Some(gpiob.pb4),
             Some(gpioc.pc11),
             Some(gpioc.pc10),
             Some(gpioc.pc9),
             Some(gpioc.pc8),
-            Some(gpiod.pd2),
             Some(gpioc.pc12),
-            Some(gpiog.pg10),
-            Some(gpiog.pg11),
-            Some(gpiob.pb4),
-            Some(gpiob.pb5),
-            Some(gpiob.pb8),
-            Some(gpiob.pb9),
-            Some(gpiob.pb6),
-            Some(gpiob.pb7),
-            Some(gpioc.pc0),
-            Some(gpioa.pa3),
-            Some(gpiob.pb1),
-            Some(gpioa.pa7),
-            Some(gpioa.pa6),
-            Some(gpioc.pc1),
-            Some(gpioc.pc4),
-            Some(gpioa.pa5),
-            Some(gpioa.pa4),
-            Some(gpioa.pa1),
-            Some(gpioa.pa0),
-            Some(gpiod.pd11),
-            Some(gpiog.pg9),
-            Some(gpioa.pa2),
-            Some(gpiob.pb14),
-            Some(gpiob.pb15),
-            None,
-            None,
+            Some(gpiod.pd2),
+            Some(gpioc.pc2),
+            Some(gpioc.pc3),
+            Some(gpiod.pd3),
         );
 
-        System::init_debug(resources.dcb, resources.dwt);
+        PatchSmSystem::init_debug(resources.dcb, resources.dwt);
 
         // set up flash
         let flash = crate::flash::Flash::new(
@@ -184,68 +109,8 @@ impl MinimalSystem {
     }
 }
 
-pub struct InternalUsbPins {
-    pub dp: gpio::gpioa::PA12<gpio::Analog>,
-    pub dm: gpio::gpioa::PA11<gpio::Analog>,
-}
-
-/// All peripherals and other resources required for the system
-pub struct SystemResources<'a> {
-    pub clocks: &'a CoreClocks,
-    pub adc1: stm32::ADC1,
-    pub adc2: stm32::ADC2,
-    pub adc12_rec: rcc::rec::Adc12,
-    pub syst: stm32::SYST,
-    pub mpu: &'a mut stm32::MPU,
-    pub scb: &'a mut stm32::SCB,
-    pub dcb: &'a mut stm32::DCB,
-    pub dwt: &'a mut stm32::DWT,
-    pub fmc: stm32::FMC,
-    pub fmc_rec: rcc::rec::Fmc,
-    pub i2c2: stm32::I2C2,
-    pub i2c2_rec: rcc::rec::I2c2,
-    pub cpuid: &'a mut cortex_m::peripheral::CPUID,
-    pub qspi: stm32::QUADSPI,
-    pub qspi_rec: rcc::rec::Qspi,
-
-    pub sai1: stm32::SAI1,
-    pub sai1_rec: rcc::rec::Sai1,
-
-    pub gpioa: stm32::GPIOA,
-    pub gpioa_rec: rcc::rec::Gpioa,
-
-    pub gpiob: stm32::GPIOB,
-    pub gpiob_rec: rcc::rec::Gpiob,
-
-    pub gpioc: stm32::GPIOC,
-    pub gpioc_rec: rcc::rec::Gpioc,
-
-    pub gpiod: stm32::GPIOD,
-    pub gpiod_rec: rcc::rec::Gpiod,
-
-    pub gpioe: stm32::GPIOE,
-    pub gpioe_rec: rcc::rec::Gpioe,
-
-    pub gpiof: stm32::GPIOF,
-    pub gpiof_rec: rcc::rec::Gpiof,
-
-    pub gpiog: stm32::GPIOG,
-    pub gpiog_rec: rcc::rec::Gpiog,
-
-    pub gpioh: stm32::GPIOH,
-    pub gpioh_rec: rcc::rec::Gpioh,
-
-    pub gpioi: stm32::GPIOI,
-    pub gpioi_rec: rcc::rec::Gpioi,
-
-    pub dma1: stm32::DMA1,
-    pub dma1_rec: rcc::rec::Dma1,
-
-    pub block_size: usize,
-}
-
 #[macro_export]
-macro_rules! system_init {
+macro_rules! patch_sm_system_init {
     ($core:ident, $device:ident, $ccdr:ident) => {
         libdaisy::system_init!($core, $device, $ccdr, libdaisy::audio::BLOCK_SIZE_MAX);
     };
@@ -255,6 +120,8 @@ macro_rules! system_init {
             adc1: $device.ADC1,
             adc2: $device.ADC2,
             adc12_rec: $ccdr.peripheral.ADC12,
+            dac: $device.DAC,
+            dac12_rec: $ccdr.peripheral.DAC12,
             syst: $core.SYST,
             mpu: &mut $core.MPU,
             scb: &mut $core.SCB,
@@ -292,18 +159,20 @@ macro_rules! system_init {
             block_size: $block_size,
         };
 
-        libdaisy::system::System::init(resources)
+        libdaisy::system::PatchSmSystem::init(resources)
     }};
 }
 
 #[macro_export]
-macro_rules! minimal_init {
+macro_rules! patch_sm_minimal_init {
     ($core:ident, $device:ident, $ccdr:ident) => {{
         let resources = ::libdaisy::system::SystemResources {
             clocks: &$ccdr.clocks,
             adc1: $device.ADC1,
             adc2: $device.ADC2,
             adc12_rec: $ccdr.peripheral.ADC12,
+            dac: $device.DAC,
+            dac12_rec: $ccdr.peripheral.DAC12,
             syst: $core.SYST,
             mpu: &mut $core.MPU,
             scb: &mut $core.SCB,
@@ -341,72 +210,14 @@ macro_rules! minimal_init {
             block_size: 0,
         };
 
-        ::libdaisy::system::MinimalSystem::new(resources)
+        ::libdaisy::system::MinimalPatchSmSystem::new(resources)
     }};
 }
 
-#[derive(Clone, Copy)]
-pub enum Version {
-    Seed,
-    Seed1_1,
-    Seed2DFM,
-}
-
-impl System {
-    fn detect_version(
-        s2dfm_pin: hal::gpio::gpiod::PD4<hal::gpio::Analog>,
-        seed1_1_pin: hal::gpio::gpiod::PD3<hal::gpio::Analog>,
-        _seed3_pin: hal::gpio::gpioh::PH6<hal::gpio::Analog>,
-    ) -> Version {
-        let seed1_1_pin = seed1_1_pin.into_pull_up_input();
-        let s2dfm_pin = s2dfm_pin.into_pull_up_input();
-
-        let seed1_1 = seed1_1_pin.is_low();
-        let s2dfm = s2dfm_pin.is_low();
-
-        // Deinitialize the pins after reading
-        s2dfm_pin.into_analog();
-        seed1_1_pin.into_analog();
-
-        if seed1_1 {
-            Version::Seed1_1
-        } else if s2dfm {
-            Version::Seed2DFM
-        } else {
-            Version::Seed
-        }
-    }
-
+impl PatchSmSystem {
     /// Initialize clocks
-    pub fn init_clocks(
-        mut pwr: stm32::PWR,
-        mut rcc: stm32::RCC,
-        syscfg: &stm32::SYSCFG,
-    ) -> rcc::Ccdr {
-        // Power
-        initialize_backup_sram(&mut pwr, &mut rcc);
-        let pwr = pwr.constrain();
-        let vos = pwr.vos0(syscfg).freeze();
-
-        rcc.constrain()
-            .use_hse(HSE_CLOCK_MHZ.convert())
-            .sys_ck(CLOCK_RATE_HZ)
-            .pclk1(PCLK_HZ) // DMA clock
-            // PLL1
-            .pll1_strategy(rcc::PllConfigStrategy::Iterative)
-            .pll1_p_ck(PLL1_P_HZ)
-            .pll1_q_ck(PLL1_Q_HZ)
-            .pll1_r_ck(PLL1_R_HZ)
-            // PLL2
-            .pll2_p_ck(PLL2_P_HZ) // Default adc_ker_ck_input
-            // .pll2_q_ck(PLL2_Q_HZ)
-            // .pll2_r_ck(PLL2_R_HZ)
-            // PLL3
-            .pll3_strategy(rcc::PllConfigStrategy::Fractional)
-            .pll3_p_ck(PLL3_P_HZ) // used for SAI1
-            .pll3_q_ck(PLL3_Q_HZ)
-            .pll3_r_ck(PLL3_R_HZ)
-            .freeze(vos, syscfg)
+    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg)
     }
 
     /// Set up cache
@@ -426,7 +237,7 @@ impl System {
     }
 
     /// Batteries included initialization
-    pub fn init(resources: SystemResources) -> System {
+    pub fn init(resources: SystemResources) -> PatchSmSystem {
         info!("Starting system init");
         info!("Set up up DMA RAM in DRAM2...");
         crate::mpu::init_dma(
@@ -533,8 +344,6 @@ impl System {
         let dma1_streams = dma::dma::StreamsTuple::new(resources.dma1, resources.dma1_rec);
 
         info!("Set up Audio...");
-        let version = Self::detect_version(gpiod.pd4, gpiod.pd3, gpioh.ph6);
-
         let audio = Audio::new(
             dma1_streams.0,
             dma1_streams.1,
@@ -550,59 +359,54 @@ impl System {
             gpioh.ph4,
             gpiob.pb11,
             resources.clocks,
-            version,
+            seed::Version::Seed1_1,
             &mut delay,
             resources.block_size,
         );
 
-        let (d31, d32) = match version {
-            Version::Seed2DFM => (Some(gpioc.pc2), Some(gpioc.pc3)),
-            _ => (None, None),
-        };
-
         // Set up GPIOs
-        let gpio = crate::gpio::GPIO::init(
+        let gpio = crate::gpio::PatchSmGPIO::init(
             gpioc.pc7,
             gpiog.pg3,
-            Some(gpiob.pb12),
+            Some(gpioa.pa1),
+            Some(gpioa.pa0),
+            Some(gpiob.pb14),
+            Some(gpiob.pb15),
+            Some(gpioc.pc14),
+            Some(gpioc.pc13),
+            Some(gpiob.pb8),
+            Some(gpiob.pb9),
+            Some(gpiog.pg14),
+            Some(gpiog.pg13),
+            None,
+            Some(gpioa.pa7),
+            Some(gpioa.pa2),
+            Some(gpioa.pa6),
+            Some(gpioa.pa3),
+            Some(gpiob.pb1),
+            Some(gpioc.pc4),
+            Some(gpioc.pc0),
+            Some(gpioc.pc1),
+            None,
+            Some(gpiob.pb4),
             Some(gpioc.pc11),
             Some(gpioc.pc10),
             Some(gpioc.pc9),
             Some(gpioc.pc8),
-            Some(gpiod.pd2),
             Some(gpioc.pc12),
-            Some(gpiog.pg10),
-            Some(gpiog.pg11),
-            Some(gpiob.pb4),
-            Some(gpiob.pb5),
-            Some(gpiob.pb8),
-            Some(gpiob.pb9),
-            Some(gpiob.pb6),
-            Some(gpiob.pb7),
-            Some(gpioc.pc0),
-            Some(gpioa.pa3),
-            Some(gpiob.pb1),
-            Some(gpioa.pa7),
-            Some(gpioa.pa6),
-            Some(gpioc.pc1),
-            Some(gpioc.pc4),
-            Some(gpioa.pa5),
-            Some(gpioa.pa4),
-            Some(gpioa.pa1),
-            Some(gpioa.pa0),
-            Some(gpiod.pd11),
-            Some(gpiog.pg9),
-            Some(gpioa.pa2),
-            Some(gpiob.pb14),
-            Some(gpiob.pb15),
-            d31,
-            d32,
+            Some(gpiod.pd2),
+            Some(gpioc.pc2),
+            Some(gpioc.pc3),
+            Some(gpiod.pd3),
         );
 
         // Set up cache
         Self::init_cache(resources.scb, resources.cpuid);
 
-        info!("System init done!");
+        info!("Set up DAC...");
+        let (c1, c2) = dac::dac(resources.dac, (gpioa.pa4, gpioa.pa5), resources.dac12_rec);
+
+        info!("Patch Submodule system init done!");
 
         // set up flash
         let flash = crate::flash::Flash::new(
@@ -623,42 +427,17 @@ impl System {
             dm: gpioa.pa11,
         };
 
-        System {
+        PatchSmSystem {
             gpio,
             audio,
             adc1,
             adc2,
+            c1: Some(c1),
+            c2: Some(c2),
             sdram,
             flash,
             internal_usb: Some(internal_usb),
             delay,
         }
     }
-}
-
-fn log_clocks(ccdr: &stm32h7xx_hal::rcc::Ccdr) {
-    info!("Core {}", ccdr.clocks.c_ck());
-    info!("hclk {}", ccdr.clocks.hclk());
-    info!("pclk1 {}", ccdr.clocks.pclk1());
-    info!("pclk2 {}", ccdr.clocks.pclk2());
-    info!("pclk3 {}", ccdr.clocks.pclk2());
-    info!("pclk4 {}", ccdr.clocks.pclk4());
-    info!(
-        "PLL1\nP: {:?}\nQ: {:?}\nR: {:?}",
-        ccdr.clocks.pll1_p_ck(),
-        ccdr.clocks.pll1_q_ck(),
-        ccdr.clocks.pll1_r_ck()
-    );
-    info!(
-        "PLL2\nP: {:?}\nQ: {:?}\nR: {:?}",
-        ccdr.clocks.pll2_p_ck(),
-        ccdr.clocks.pll2_q_ck(),
-        ccdr.clocks.pll2_r_ck()
-    );
-    info!(
-        "PLL3\nP: {:?}\nQ: {:?}\nR: {:?}",
-        ccdr.clocks.pll3_p_ck(),
-        ccdr.clocks.pll3_q_ck(),
-        ccdr.clocks.pll3_r_ck()
-    );
 }

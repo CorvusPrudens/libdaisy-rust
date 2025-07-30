@@ -164,13 +164,13 @@ impl Audio {
         i2c_sda: gpiob::PB11<Analog>,
 
         clocks: &rcc::CoreClocks,
-        board_version: crate::system::Version,
+        board_version: crate::system::seed::Version,
         delay: &mut impl DelayMs<u8>,
 
         block_size: usize,
     ) -> Self {
         match board_version {
-            crate::system::Version::Seed1_1 => {
+            crate::system::seed::Version::Seed1_1 => {
                 let dma_buffer_size = block_size * 2 * 2;
                 let rx_buffer: &'static mut [u32] =
                     unsafe { &mut RX_BUFFER.as_mut_slice()[..dma_buffer_size] };
@@ -293,7 +293,7 @@ impl Audio {
                     max_transfer_size,
                 }
             }
-            crate::system::Version::Seed2DFM | crate::system::Version::Seed => {
+            crate::system::seed::Version::Seed2DFM | crate::system::seed::Version::Seed => {
                 let dma_buffer_size = block_size * 2 * 2;
 
                 let rx_buffer: &'static mut [u32] =
@@ -354,7 +354,7 @@ impl Audio {
                 );
 
                 match board_version {
-                    crate::system::Version::Seed => {
+                    crate::system::seed::Version::Seed => {
                         info!("Setting up AK4556/PCM3060 Audio CODEC...");
                         let mut ak_reset = i2c_sda
                             .into_push_pull_output_in_state(stm32h7xx_hal::gpio::PinState::High);
@@ -363,7 +363,7 @@ impl Audio {
                         delay.delay_ms(1);
                         ak_reset.set_high();
                     }
-                    crate::system::Version::Seed2DFM => {
+                    crate::system::seed::Version::Seed2DFM => {
                         // Set deemphasis low
                         info!("Setting up PCM3060 Audio CODEC...");
                         i2c_sda.into_push_pull_output_in_state(stm32h7xx_hal::gpio::PinState::Low);

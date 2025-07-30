@@ -30,8 +30,8 @@ mod app {
         logger::init();
         let mut core = ctx.core;
         let device = ctx.device;
-        let ccdr = system::System::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
-        let mut system = libdaisy::system_init!(core, device, ccdr);
+        let ccdr = system::SeedSystem::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
+        let mut system = libdaisy::seed_system_init!(core, device, ccdr);
         info!("Startup done!");
 
         let mut timer2 = stm32h7xx_hal::timer::TimerExt::timer(

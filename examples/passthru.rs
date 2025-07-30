@@ -28,8 +28,8 @@ mod app {
         // moved out of the function in the previous implementation.
         let mut core = ctx.core;
         let device = ctx.device;
-        let ccdr = system::System::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
-        let system = libdaisy::system_init!(core, device, ccdr, BLOCK_SIZE);
+        let ccdr = system::SeedSeedSystem::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
+        let system = libdaisy::seed_seed_system_init!(core, device, ccdr, BLOCK_SIZE);
 
         info!("Startup done!!");
 

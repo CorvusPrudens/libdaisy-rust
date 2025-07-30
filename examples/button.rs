@@ -26,8 +26,8 @@ mod app {
         logger::init();
         let mut core = ctx.core;
         let mut device = ctx.device;
-        let ccdr = system::System::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
-        let mut system = libdaisy::system_init!(core, device, ccdr);
+        let ccdr = system::SeedSeedSystem::init_clocks(device.PWR, device.RCC, &device.SYSCFG);
+        let mut system = libdaisy::seed_seed_system_init!(core, device, ccdr);
         info!("Startup done!");
 
         // Button

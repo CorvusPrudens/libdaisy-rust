@@ -142,9 +142,9 @@ pub struct Audio {
 }
 
 impl Audio {
-    /// Setup audio handler
+    /// Setup audio handler for the Seed.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn seed(
         dma1_stream0: dma::dma::StreamX<stm32::DMA1, 0>,
         dma1_stream1: dma::dma::StreamX<stm32::DMA1, 1>,
         sai1_d: stm32::SAI1,
@@ -412,6 +412,183 @@ impl Audio {
                     max_transfer_size,
                 }
             }
+        }
+    }
+
+    /// Initializes audio for the Daisy Patch Submodule.
+    #[allow(clippy::too_many_arguments)]
+    pub fn patch_sm(
+        dma1_stream0: dma::dma::StreamX<stm32::DMA1, 0>,
+        dma1_stream1: dma::dma::StreamX<stm32::DMA1, 1>,
+        sai1_d: stm32::SAI1,
+        sai1_p: rcc::rec::Sai1,
+        i2c2_d: stm32::I2C2,
+        i2c2_p: rcc::rec::I2c2,
+
+        sai_mclk_a: gpioe::PE2<Analog>,
+        sai_sd_b: gpioe::PE3<Analog>,
+        sai_fs_a: gpioe::PE4<Analog>,
+        sai_sck_a: gpioe::PE5<Analog>,
+        sai_sd_a: gpioe::PE6<Analog>,
+
+        i2c_scl: gpiob::PB10<Analog>,
+        i2c_sda: gpiob::PB11<Analog>,
+
+        clocks: &rcc::CoreClocks,
+        delay: &mut impl DelayMs<u8>,
+        block_size: usize,
+    ) -> Self {
+        let dma_buffer_size = block_size * 2 * 2;
+        let rx_buffer: &'static mut [u32] =
+            unsafe { &mut RX_BUFFER.as_mut_slice()[..dma_buffer_size] };
+        let dma_config = dma::dma::DmaConfig::default()
+            .priority(dma::config::Priority::High)
+            .memory_increment(true)
+            .peripheral_increment(false)
+            .circular_buffer(true)
+            .fifo_enable(false);
+
+        let mut output_stream = dma::Transfer::init(
+            dma1_stream0,
+            unsafe { pac::Peripherals::steal().SAI1.dma_ch_a() },
+            rx_buffer,
+            None,
+            dma_config,
+        );
+
+        let tx_buffer: &'static mut [u32] =
+            unsafe { &mut TX_BUFFER.as_mut_slice()[..dma_buffer_size] };
+        let dma_config = dma_config
+            .transfer_complete_interrupt(true)
+            .half_transfer_interrupt(true);
+
+        let mut input_stream = dma::Transfer::init(
+            dma1_stream1,
+            unsafe { pac::Peripherals::steal().SAI1.dma_ch_b() },
+            tx_buffer,
+            None,
+            dma_config,
+        );
+
+        info!("Set up SAI...");
+        let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
+        let master_config =
+            sai::I2SChanConfig::new(sai::I2SDir::Rx).set_frame_sync_active_high(false);
+        let slave_config = sai::I2SChanConfig::new(sai::I2SDir::Tx)
+            .set_sync_type(sai::I2SSync::Internal)
+            .set_frame_sync_active_high(false);
+
+        let pins_a = (
+            sai_mclk_a.into_alternate(),
+            sai_sck_a.into_alternate(),
+            sai_fs_a.into_alternate(),
+            sai_sd_a.into_alternate(),
+            Some(sai_sd_b.into_alternate()),
+        );
+
+        let mut sai = sai1_d.i2s_ch_a(
+            pins_a,
+            crate::AUDIO_SAMPLE_HZ,
+            sai::I2SDataSize::BITS_24,
+            sai1_rec,
+            clocks,
+            sai::I2sUsers::new(master_config).add_slave(slave_config),
+        );
+
+        info!("Setting up PCM3060 Audio Codec...");
+        let i2c2_pins = (
+            i2c_scl.into_alternate_open_drain(),
+            i2c_sda.into_alternate_open_drain(),
+        );
+
+        let mut i2c = i2c2_d.i2c(i2c2_pins, 100.kHz(), i2c2_p, clocks);
+        pcm3060_init(&mut i2c, delay);
+
+        const DEV_ADDR: u8 = 0x46;
+
+        const REG_SYS_CTRL: u8 = 0x40;
+        const REG_DAC_CTRL1: u8 = 0x43;
+        const REG_ADC_CTRL1: u8 = 0x48;
+
+        const MASK_MRST: u8 = 0x80;
+        const MASK_SRST: u8 = 0x40;
+        const MASK_ADC_PSV: u8 = 0x20;
+        const MASK_DAC_PSV: u8 = 0x10;
+        const MASK_FMT: u8 = 0x01;
+
+        // handle the error?
+        fn read_reg(reg_addr: u8, i2c: &mut I2c<pac::I2C2>) -> u8 {
+            let mut buffer = [0u8; 1];
+            i2c.write_read(DEV_ADDR, &[reg_addr], &mut buffer).unwrap();
+            buffer[0]
+        }
+
+        // handle the error?
+        fn write_reg(reg_addr: u8, val: u8, i2c: &mut I2c<pac::I2C2>) {
+            i2c.write(DEV_ADDR, &[reg_addr, val]).unwrap();
+        }
+
+        // POWER-ON RESET and EXTERNAL RESET Sequence
+        // Default Format spec for now: I2S 24-bit MSB aligned (FMT1/2[1:0] = 01)
+
+        // Slave address: 0b100011Nx
+        // N = 0 (GND on hardware)
+        // x = R/W (not passed to address param)
+        fn pcm3060_init(i2c: &mut I2c<pac::I2C2>, delay: &mut impl DelayMs<u8>) {
+            // MSRT
+            let mut sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
+            sys_ctrl &= !MASK_MRST;
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)?;
+            delay.delay_ms(4);
+
+            // SRST
+            sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
+            sys_ctrl &= !MASK_SRST;
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)?;
+            delay.delay_ms(4);
+
+            // ADC/DAC Format set to 24-bit LJ
+            let mut dac_ctrl = read_reg(REG_DAC_CTRL1, i2c)?;
+            let mut adc_ctrl = read_reg(REG_ADC_CTRL1, i2c)?;
+            dac_ctrl |= MASK_FMT;
+            adc_ctrl |= MASK_FMT;
+            write_reg(REG_DAC_CTRL1, dac_ctrl, i2c)?;
+            write_reg(REG_ADC_CTRL1, adc_ctrl, i2c)?;
+
+            // Disable Powersave for ADC/DAC
+            sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
+            sys_ctrl &= !(MASK_ADC_PSV | MASK_DAC_PSV);
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)?;
+        }
+
+        info!("Start audio stream...");
+        input_stream.start(|_sai1_rb| sai.enable_dma(sai::SaiChannel::ChannelA));
+        output_stream.start(|sai1_rb| {
+            sai.enable_dma(sai::SaiChannel::ChannelB);
+            while sai1_rb.chb().sr.read().flvl().is_empty() {}
+            sai.enable();
+            sai.try_send(0, 0).unwrap();
+        });
+
+        let max_transfer_size = block_size * 2;
+        let input = Input::new(
+            unsafe { &*core::ptr::addr_of!(RX_BUFFER) },
+            max_transfer_size,
+        );
+        let output = Output::new(
+            unsafe { &mut *core::ptr::addr_of_mut!(TX_BUFFER) },
+            max_transfer_size,
+        );
+
+        Audio {
+            sai,
+            audio_stream: AudioStream::Normal {
+                input: input_stream,
+                output: output_stream,
+            },
+            input,
+            output,
+            max_transfer_size,
         }
     }
 

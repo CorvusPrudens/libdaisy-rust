@@ -344,7 +344,7 @@ impl PatchSmSystem {
         let dma1_streams = dma::dma::StreamsTuple::new(resources.dma1, resources.dma1_rec);
 
         info!("Set up Audio...");
-        let audio = Audio::new(
+        let audio = Audio::patch_sm(
             dma1_streams.0,
             dma1_streams.1,
             resources.sai1,
@@ -359,7 +359,6 @@ impl PatchSmSystem {
             gpioh.ph4,
             gpiob.pb11,
             resources.clocks,
-            seed::Version::Seed1_1,
             &mut delay,
             resources.block_size,
         );

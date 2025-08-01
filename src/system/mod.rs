@@ -18,6 +18,11 @@ pub mod seed;
 pub use patch_sm::{MinimalPatchSmSystem, PatchSmSystem};
 pub use seed::{MinimalSeedSystem, SeedSystem};
 
+pub enum Board {
+    Seed(seed::Version),
+    PatchSm,
+}
+
 const START_OF_DRAM2: u32 = 0x30000000;
 const DMA_MEM_SIZE: usize = 32 * 1024;
 

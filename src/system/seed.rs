@@ -378,7 +378,7 @@ impl SeedSystem {
         info!("Set up Audio...");
         let version = Self::detect_version(gpiod.pd4, gpiod.pd3, gpioh.ph6);
 
-        let audio = Audio::new(
+        let audio = Audio::seed(
             dma1_streams.0,
             dma1_streams.1,
             resources.sai1,

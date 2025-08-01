@@ -356,7 +356,7 @@ impl PatchSmSystem {
             gpioe.pe4,
             gpioe.pe5,
             gpioe.pe6,
-            gpioh.ph4,
+            gpiob.pb10,
             gpiob.pb11,
             resources.clocks,
             &mut delay,

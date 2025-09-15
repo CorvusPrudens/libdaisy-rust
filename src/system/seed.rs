@@ -118,9 +118,15 @@ impl MinimalSeedSystem {
 #[macro_export]
 macro_rules! seed_system_init {
     ($core:ident, $device:ident, $ccdr:ident) => {
-        libdaisy::system_init!($core, $device, $ccdr, libdaisy::audio::BLOCK_SIZE_MAX);
+        libdaisy::system_init!(
+            $core,
+            $device,
+            $ccdr,
+            libdaisy::audio::BLOCK_SIZE_MAX,
+            48_000,
+        );
     };
-    ($core:ident, $device:ident, $ccdr:ident, $block_size:expr) => {{
+    ($core:ident, $device:ident, $ccdr:ident, $block_size:expr, $sample_rate:expr) => {{
         let resources = libdaisy::system::SystemResources {
             clocks: &$ccdr.clocks,
             adc1: $device.ADC1,
@@ -163,6 +169,7 @@ macro_rules! seed_system_init {
             dma1: $device.DMA1,
             dma1_rec: $ccdr.peripheral.DMA1,
             block_size: $block_size,
+            sample_rate: $sample_rate,
         };
 
         libdaisy::system::SeedSystem::init(resources)
@@ -406,6 +413,7 @@ impl SeedSystem {
             version,
             &mut delay,
             resources.block_size,
+            resources.sample_rate,
         );
 
         let (d31, d32) = match version {

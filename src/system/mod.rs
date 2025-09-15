@@ -153,6 +153,7 @@ pub struct SystemResources<'a> {
     pub dma1_rec: rcc::rec::Dma1,
 
     pub block_size: usize,
+    pub sample_rate: Hertz,
 }
 
 fn log_clocks(ccdr: &stm32h7xx_hal::rcc::Ccdr) {

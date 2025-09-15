@@ -117,9 +117,15 @@ impl MinimalPatchSmSystem {
 #[macro_export]
 macro_rules! patch_sm_system_init {
     ($core:ident, $device:ident, $ccdr:ident) => {
-        libdaisy::system_init!($core, $device, $ccdr, libdaisy::audio::BLOCK_SIZE_MAX,);
+        libdaisy::system_init!(
+            $core,
+            $device,
+            $ccdr,
+            libdaisy::audio::BLOCK_SIZE_MAX,
+            48_000
+        );
     };
-    ($core:ident, $device:ident, $ccdr:ident, $block_size:expr) => {{
+    ($core:ident, $device:ident, $ccdr:ident, $block_size:expr, $sample_rate:expr) => {{
         let resources = libdaisy::system::SystemResources {
             clocks: &$ccdr.clocks,
             adc1: $device.ADC1,
@@ -162,6 +168,7 @@ macro_rules! patch_sm_system_init {
             dma1: $device.DMA1,
             dma1_rec: $ccdr.peripheral.DMA1,
             block_size: $block_size,
+            sample_rate: $sample_rate,
         };
 
         libdaisy::system::PatchSmSystem::init(resources)
@@ -371,6 +378,7 @@ impl PatchSmSystem {
             resources.clocks,
             &mut delay,
             resources.block_size,
+            resources.sample_rate,
         );
 
         // Set up GPIOs

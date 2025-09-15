@@ -170,6 +170,7 @@ impl Audio {
         delay: &mut impl DelayMs<u8>,
 
         block_size: usize,
+        sample_rate: Hertz,
     ) -> Self {
         match board_version {
             crate::system::seed::Version::Seed1_1 => {
@@ -222,7 +223,7 @@ impl Audio {
                 // Hand off to audio module
                 let mut sai = sai1_d.i2s_ch_a(
                     pins_a,
-                    crate::AUDIO_SAMPLE_HZ,
+                    sample_rate,
                     I2SDataSize::BITS_24,
                     sai1_rec,
                     clocks,
@@ -348,7 +349,7 @@ impl Audio {
                 // Hand off to audio module
                 let mut sai = sai1_d.i2s_ch_a(
                     pins_a,
-                    crate::AUDIO_SAMPLE_HZ,
+                    sample_rate,
                     I2SDataSize::BITS_24,
                     sai1_rec,
                     clocks,
@@ -439,6 +440,7 @@ impl Audio {
         clocks: &rcc::CoreClocks,
         delay: &mut impl DelayMs<u8>,
         block_size: usize,
+        sample_rate: Hertz,
     ) -> Self {
         let dma_buffer_size = block_size * 2 * 2;
         let rx_buffer: &'static mut [u32] =
@@ -490,7 +492,7 @@ impl Audio {
 
         let mut sai = sai1_d.i2s_ch_a(
             pins_a,
-            crate::AUDIO_SAMPLE_HZ,
+            sample_rate,
             sai::I2SDataSize::BITS_24,
             sai1_rec,
             clocks,

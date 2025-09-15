@@ -42,15 +42,20 @@ const PLL2_P_HZ: Hertz = Hertz::from_raw(4_000_000);
 const PLL2_Q_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 2); // No divder given, what's the default?
 const PLL2_R_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 4); // No divder given, what's the default?
 
-const PLL3_P_HZ: Hertz = Hertz::from_raw(AUDIO_SAMPLE_HZ.raw() * 257);
-const PLL3_Q_HZ: Hertz = Hertz::from_raw(PLL3_P_HZ.raw());
-const PLL3_R_HZ: Hertz = Hertz::from_raw(PLL3_P_HZ.raw());
-
-fn init_clocks(mut pwr: stm32::PWR, mut rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
+fn init_clocks(
+    mut pwr: stm32::PWR,
+    mut rcc: stm32::RCC,
+    syscfg: &stm32::SYSCFG,
+    audio_sample_rate: Hertz,
+) -> rcc::Ccdr {
     // Power
     initialize_backup_sram(&mut pwr, &mut rcc);
     let pwr = pwr.constrain();
     let vos = pwr.vos0(syscfg).freeze();
+
+    let PLL3_P_HZ = Hertz::from_raw(audio_sample_rate.raw() * 257);
+    let PLL3_Q_HZ = Hertz::from_raw(PLL3_P_HZ.raw());
+    let PLL3_R_HZ = Hertz::from_raw(PLL3_P_HZ.raw());
 
     rcc.constrain()
         .use_hse(HSE_CLOCK_MHZ.convert())

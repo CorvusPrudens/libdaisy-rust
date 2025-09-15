@@ -5,10 +5,6 @@ use stm32h7xx_hal::time::Hertz;
 
 pub const MILLI: u32 = 1_000;
 pub const MICRO: u32 = 1_000_000;
-pub const AUDIO_FRAME_RATE_HZ: u32 = 1_000;
-pub const AUDIO_BLOCK_SIZE: u16 = 48;
-pub const AUDIO_SAMPLE_RATE: usize = 48_000;
-pub const AUDIO_SAMPLE_HZ: Hertz = Hertz::from_raw(48_000);
 pub const CLOCK_RATE_HZ: Hertz = Hertz::from_raw(480_000_000_u32);
 
 pub const MILICYCLES: u32 = CLOCK_RATE_HZ.raw() / MILLI;

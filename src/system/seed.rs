@@ -1,5 +1,5 @@
 use log::info;
-use stm32h7xx_hal::{adc, delay::Delay, dma, prelude::*, rcc, stm32};
+use stm32h7xx_hal::{adc, delay::Delay, dma, prelude::*, rcc, stm32, time::Hertz};
 
 use crate::{audio::Audio, *};
 
@@ -25,8 +25,13 @@ pub struct MinimalSeedSystem {
 
 impl MinimalSeedSystem {
     /// Initialize clocks
-    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
-        init_clocks(pwr, rcc, syscfg)
+    pub fn init_clocks(
+        pwr: stm32::PWR,
+        rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+        sample_rate: Hertz,
+    ) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg, sample_rate)
     }
 
     pub fn new(resources: SystemResources) -> Self {
@@ -248,8 +253,13 @@ impl SeedSystem {
     }
 
     /// Initialize clocks
-    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
-        init_clocks(pwr, rcc, syscfg)
+    pub fn init_clocks(
+        pwr: stm32::PWR,
+        rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+        sample_rate: Hertz,
+    ) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg, sample_rate)
     }
 
     /// Set up cache

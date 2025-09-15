@@ -1,5 +1,5 @@
 use log::info;
-use stm32h7xx_hal::{adc, dac, delay::Delay, dma, prelude::*, rcc, stm32};
+use stm32h7xx_hal::{adc, dac, delay::Delay, dma, prelude::*, rcc, stm32, time::Hertz};
 
 use crate::{audio::Audio, *};
 
@@ -27,8 +27,13 @@ pub struct MinimalPatchSmSystem {
 
 impl MinimalPatchSmSystem {
     /// Initialize clocks
-    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
-        init_clocks(pwr, rcc, syscfg)
+    pub fn init_clocks(
+        pwr: stm32::PWR,
+        rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+        audio_sample_rate: Hertz,
+    ) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg, audio_sample_rate)
     }
 
     pub fn new(resources: SystemResources) -> Self {
@@ -112,7 +117,7 @@ impl MinimalPatchSmSystem {
 #[macro_export]
 macro_rules! patch_sm_system_init {
     ($core:ident, $device:ident, $ccdr:ident) => {
-        libdaisy::system_init!($core, $device, $ccdr, libdaisy::audio::BLOCK_SIZE_MAX);
+        libdaisy::system_init!($core, $device, $ccdr, libdaisy::audio::BLOCK_SIZE_MAX,);
     };
     ($core:ident, $device:ident, $ccdr:ident, $block_size:expr) => {{
         let resources = libdaisy::system::SystemResources {
@@ -216,8 +221,13 @@ macro_rules! patch_sm_minimal_init {
 
 impl PatchSmSystem {
     /// Initialize clocks
-    pub fn init_clocks(pwr: stm32::PWR, rcc: stm32::RCC, syscfg: &stm32::SYSCFG) -> rcc::Ccdr {
-        init_clocks(pwr, rcc, syscfg)
+    pub fn init_clocks(
+        pwr: stm32::PWR,
+        rcc: stm32::RCC,
+        syscfg: &stm32::SYSCFG,
+        audio_sample_rate: Hertz,
+    ) -> rcc::Ccdr {
+        init_clocks(pwr, rcc, syscfg, audio_sample_rate)
     }
 
     /// Set up cache

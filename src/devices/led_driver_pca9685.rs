@@ -74,7 +74,8 @@ where
             crate::delay::CycleDelay::new().delay_ms(20u8);
             let _ = i2c.write(address, &[PCA9685_MODE1, 0b00100000]); // Auto increment
             crate::delay::CycleDelay::new().delay_ms(20u8);
-            let _ = i2c.write(address, &[PCA9685_MODE2, 0b000110110]); // OE-high, Push-Pull, etc.
+            // There are a few configurations in this register we may want to expose later.
+            let _ = i2c.write(address, &[PCA9685_MODE2, 0b00000110]); // OE hi-z, odrv=1
         }
 
         let len = NUM_DRIVERS * Pca9685TransmitBuffer::SIZE;

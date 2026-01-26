@@ -296,7 +296,9 @@ impl Audio {
                     max_transfer_size,
                 }
             }
-            crate::system::seed::Version::Seed2DFM | crate::system::seed::Version::Seed => {
+            crate::system::seed::Version::Seed2DFM
+            | crate::system::seed::Version::Seed
+            | crate::system::seed::Version::Seed3 => {
                 let dma_buffer_size = block_size * 2 * 2;
 
                 let rx_buffer: &'static mut [u32] =
@@ -366,7 +368,8 @@ impl Audio {
                         delay.delay_ms(1);
                         ak_reset.set_high();
                     }
-                    crate::system::seed::Version::Seed2DFM => {
+                    crate::system::seed::Version::Seed2DFM
+                    | crate::system::seed::Version::Seed3 => {
                         // Set deemphasis low
                         info!("Setting up PCM3060 Audio CODEC...");
                         i2c_sda.into_push_pull_output_in_state(stm32h7xx_hal::gpio::PinState::Low);

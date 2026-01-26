@@ -232,28 +232,34 @@ pub enum Version {
     Seed,
     Seed1_1,
     Seed2DFM,
+    Seed3,
 }
 
 impl SeedSystem {
     fn detect_version(
         s2dfm_pin: hal::gpio::gpiod::PD4<hal::gpio::Analog>,
         seed1_1_pin: hal::gpio::gpiod::PD3<hal::gpio::Analog>,
-        _seed3_pin: hal::gpio::gpioh::PH6<hal::gpio::Analog>,
+        seed3_pin: hal::gpio::gpioh::PH6<hal::gpio::Analog>,
     ) -> Version {
         let seed1_1_pin = seed1_1_pin.into_pull_up_input();
         let s2dfm_pin = s2dfm_pin.into_pull_up_input();
+        let seed3_pin = seed3_pin.into_pull_up_input();
 
         let seed1_1 = seed1_1_pin.is_low();
         let s2dfm = s2dfm_pin.is_low();
+        let seed3 = seed3_pin.is_low();
 
         // Deinitialize the pins after reading
         s2dfm_pin.into_analog();
         seed1_1_pin.into_analog();
+        seed3_pin.into_analog();
 
         if seed1_1 {
             Version::Seed1_1
         } else if s2dfm {
             Version::Seed2DFM
+        } else if seed3 {
+            Version::Seed3
         } else {
             Version::Seed
         }

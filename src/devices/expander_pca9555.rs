@@ -31,8 +31,10 @@ pub type WriteReadError<W: Write + WriteRead> =
 
 impl Pca9555 {
     pub fn new<W: Write + WriteRead>(address: u8, bus: &mut W) -> Result<Self, WriteReadError<W>> {
+        let base_address = 0x20;
+        let dev_addr = base_address + address;
         let dev = Pca9555 {
-            address,
+            address: dev_addr,
             states: Default::default(),
         };
 
@@ -43,12 +45,13 @@ impl Pca9555 {
         // So for our initial implementation.. no config is necessary
 
         // Fill internal data with current states on hardware.
-        self.update();
+        dev.update();
 
-        // Return
         Ok(dev)
     }
 
+    /// Polls the device, reading both of it's input registers to fill the
+    /// internal state data
     pub fn update<W: Write + WriteRead>(&mut self, bus: &mut W) -> Result<(), WriteReadError<W>> {
         // Register pairs flip automatically after reads.
         // So we can basically just send the `InputPort0` command,
@@ -61,6 +64,12 @@ impl Pca9555 {
             self.states[i] = (raw_union & (1 << i)) != 0;
         }
         Ok(())
+    }
+
+    /// Returns the current state recorded for a particular pin
+    pub fn get_state(self, index: u16) -> bool {
+        let idx = index.clamp(0, 16);
+        self.states[idx]
     }
 
     fn write<W: Write + WriteRead>(

@@ -46,13 +46,17 @@ impl<C, L, D, const SERIES: usize, const PARALLEL: usize>
     ///
     /// `clock` and `latch` are expected to take single pins,
     /// while `data` expects a tuple of up to 8 pins.
-    pub fn new(clock: C, latch: L, data: D) -> Self {
+    pub fn new(clock: C, latch: L, data: D, initial_state: bool) -> Self {
+        /// We'll use an arithmetic shift to fill the byte
+        let initial_state = ((initial_state as i8) << 7);
+        let initial_state = (initial_state >> 7) as u8;
+
         Self {
             clock,
             latch,
             data,
             delay: 1000,
-            bits: [[0u8; SERIES]; PARALLEL],
+            bits: [[initial_state; SERIES]; PARALLEL],
         }
     }
 

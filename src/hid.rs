@@ -47,7 +47,10 @@ where
     pub fn new(pin: T, switch_type: SwitchType) -> Self {
         Self {
             pin,
-            state: debounce_4(false),
+            state: debounce_4(match switch_type {
+                SwitchType::PullUp => true,
+                SwitchType::PullDown => false,
+            }),
             falling: false,
             rising: false,
             switch_type,
@@ -211,7 +214,7 @@ impl<T> AnalogControl<T> {
     ///
     /// ```rust
     /// if let Ok(data) = adc1.read(control1.get_pin()) {
-    ///    control1.update(data);
+    ///     control1.update(data);
     /// }
     /// ```
     pub fn update(&mut self, value: u32) {

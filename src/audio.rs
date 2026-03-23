@@ -206,11 +206,10 @@ impl Audio {
 
                 info!("Set up SAI...");
                 let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
-                let master_config =
-                    I2SChanConfig::new(I2SDir::Rx).set_frame_sync_active_high(false);
+                let master_config = I2SChanConfig::new(I2SDir::Rx).set_frame_sync_active_high(true);
                 let slave_config = I2SChanConfig::new(I2SDir::Tx)
                     .set_sync_type(I2SSync::Internal)
-                    .set_frame_sync_active_high(false);
+                    .set_frame_sync_active_high(true);
 
                 let pins_a = (
                     sai_mclk_a.into_alternate(),
@@ -334,11 +333,10 @@ impl Audio {
 
                 info!("Setup up SAI...");
                 let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
-                let master_config =
-                    I2SChanConfig::new(I2SDir::Tx).set_frame_sync_active_high(false);
+                let master_config = I2SChanConfig::new(I2SDir::Tx).set_frame_sync_active_high(true);
                 let slave_config = I2SChanConfig::new(I2SDir::Rx)
                     .set_sync_type(I2SSync::Internal)
-                    .set_frame_sync_active_high(false);
+                    .set_frame_sync_active_high(true);
 
                 let pins_a = (
                     sai_mclk_a.into_alternate(),
@@ -480,10 +478,10 @@ impl Audio {
         info!("Set up SAI...");
         let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
         let master_config =
-            sai::I2SChanConfig::new(sai::I2SDir::Rx).set_frame_sync_active_high(false);
+            sai::I2SChanConfig::new(sai::I2SDir::Rx).set_frame_sync_active_high(true);
         let slave_config = sai::I2SChanConfig::new(sai::I2SDir::Tx)
             .set_sync_type(sai::I2SSync::Internal)
-            .set_frame_sync_active_high(false);
+            .set_frame_sync_active_high(true);
 
         let pins_a = (
             sai_mclk_a.into_alternate(),

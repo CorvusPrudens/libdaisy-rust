@@ -182,6 +182,8 @@ impl Audio {
                     .memory_increment(true)
                     .peripheral_increment(false)
                     .circular_buffer(true)
+                    .transfer_complete_interrupt(true)
+                    .half_transfer_interrupt(true)
                     .fifo_enable(false);
                 let mut output_stream = dma::Transfer::init(
                     dma1_stream0,
@@ -206,11 +208,10 @@ impl Audio {
 
                 info!("Set up SAI...");
                 let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
-                let master_config =
-                    I2SChanConfig::new(I2SDir::Rx).set_frame_sync_active_high(false);
+                let master_config = I2SChanConfig::new(I2SDir::Rx).set_frame_sync_active_high(true);
                 let slave_config = I2SChanConfig::new(I2SDir::Tx)
                     .set_sync_type(I2SSync::Internal)
-                    .set_frame_sync_active_high(false);
+                    .set_frame_sync_active_high(true);
 
                 let pins_a = (
                     sai_mclk_a.into_alternate(),
@@ -258,16 +259,9 @@ impl Audio {
                 input_stream.start(|_sai1_rb| {
                     sai.enable_dma(SaiChannel::ChannelA);
                 });
-
-                output_stream.start(|sai1_rb| {
+                sai.enable();
+                output_stream.start(|_sai1_rb| {
                     sai.enable_dma(SaiChannel::ChannelB);
-
-                    // wait until sai1's fifo starts to receive data
-                    info!("Sai1 fifo waiting to receive data.");
-                    while sai1_rb.chb().sr.read().flvl().is_empty() {}
-                    info!("Audio started!");
-                    sai.enable();
-                    sai.try_send(0, 0).unwrap();
                 });
 
                 let max_transfer_size = block_size * 2;
@@ -334,11 +328,10 @@ impl Audio {
 
                 info!("Setup up SAI...");
                 let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
-                let master_config =
-                    I2SChanConfig::new(I2SDir::Tx).set_frame_sync_active_high(false);
+                let master_config = I2SChanConfig::new(I2SDir::Tx).set_frame_sync_active_high(true);
                 let slave_config = I2SChanConfig::new(I2SDir::Rx)
                     .set_sync_type(I2SSync::Internal)
-                    .set_frame_sync_active_high(false);
+                    .set_frame_sync_active_high(true);
 
                 let pins_a = (
                     sai_mclk_a.into_alternate(),
@@ -453,6 +446,8 @@ impl Audio {
             .memory_increment(true)
             .peripheral_increment(false)
             .circular_buffer(true)
+            .transfer_complete_interrupt(true)
+            .half_transfer_interrupt(true)
             .fifo_enable(false);
 
         let mut output_stream = dma::Transfer::init(
@@ -480,10 +475,10 @@ impl Audio {
         info!("Set up SAI...");
         let sai1_rec = sai1_p.kernel_clk_mux(SAI1SEL_A::Pll3P);
         let master_config =
-            sai::I2SChanConfig::new(sai::I2SDir::Rx).set_frame_sync_active_high(false);
+            sai::I2SChanConfig::new(sai::I2SDir::Rx).set_frame_sync_active_high(true);
         let slave_config = sai::I2SChanConfig::new(sai::I2SDir::Tx)
             .set_sync_type(sai::I2SSync::Internal)
-            .set_frame_sync_active_high(false);
+            .set_frame_sync_active_high(true);
 
         let pins_a = (
             sai_mclk_a.into_alternate(),
@@ -569,12 +564,12 @@ impl Audio {
         }
 
         info!("Start audio stream...");
-        input_stream.start(|_sai1_rb| sai.enable_dma(sai::SaiChannel::ChannelA));
-        output_stream.start(|sai1_rb| {
-            sai.enable_dma(sai::SaiChannel::ChannelB);
-            while sai1_rb.chb().sr.read().flvl().is_empty() {}
-            sai.enable();
-            sai.try_send(0, 0).unwrap();
+        input_stream.start(|_sai1_rb| {
+            sai.enable_dma(SaiChannel::ChannelA);
+        });
+        sai.enable();
+        output_stream.start(|_sai1_rb| {
+            sai.enable_dma(SaiChannel::ChannelB);
         });
 
         let max_transfer_size = block_size * 2;
@@ -604,15 +599,15 @@ impl Audio {
         // Check interrupt(s)
         match &mut self.audio_stream {
             AudioStream::Normal { input, output } => {
-                output.clear_interrupts();
+                input.clear_interrupts();
 
-                if input.get_half_transfer_flag() {
-                    input.clear_half_transfer_interrupt();
+                if output.get_half_transfer_flag() {
+                    output.clear_half_transfer_interrupt();
                     self.input.set_index(0);
                     self.output.set_index(0);
                     true
-                } else if input.get_transfer_complete_flag() {
-                    input.clear_transfer_complete_interrupt();
+                } else if output.get_transfer_complete_flag() {
+                    output.clear_transfer_complete_interrupt();
                     self.input.set_index(self.max_transfer_size);
                     self.output.set_index(self.max_transfer_size);
                     true
@@ -645,8 +640,8 @@ impl Audio {
         // Check interrupt(s)
         match &mut self.audio_stream {
             AudioStream::Normal { input, output } => {
-                output.clear_interrupts();
-                input.get_half_transfer_flag() || input.get_transfer_complete_flag()
+                input.clear_interrupts();
+                output.get_half_transfer_flag() || output.get_transfer_complete_flag()
             }
             AudioStream::S2dfm { output, input } => {
                 input.clear_interrupts();

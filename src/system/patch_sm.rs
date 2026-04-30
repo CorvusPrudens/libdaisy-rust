@@ -457,4 +457,12 @@ impl PatchSmSystem {
             delay,
         }
     }
+
+    pub fn take_dac_c1(&mut self) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
+        self.c1.take()
+    }
+
+    pub fn take_dac_c2(&mut self) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
+        self.c2.take()
+    }
 }

@@ -10,13 +10,17 @@ pub struct SeedSystem {
     pub audio: audio::Audio,
     pub adc1: adc::Adc<stm32::ADC1, adc::Disabled>,
     pub adc2: adc::Adc<stm32::ADC2, adc::Disabled>,
-    pub c1: Option<dac::C1<stm32::DAC, dac::Disabled>>,
-    pub c2: Option<dac::C2<stm32::DAC, dac::Disabled>>,
-    dac_state: SeedDacState,
+    pub dac: SeedDac,
     pub sdram: &'static mut [f32],
     pub flash: crate::flash::Flash,
     pub internal_usb: Option<InternalUsbPins>,
     pub delay: Delay,
+}
+
+pub struct SeedDac {
+    c1: Option<dac::C1<stm32::DAC, dac::Disabled>>,
+    c2: Option<dac::C2<stm32::DAC, dac::Disabled>>,
+    state: SeedDacState,
 }
 
 enum SeedDacState {
@@ -27,6 +31,103 @@ enum SeedDacState {
     Channel1Initialized,
     Channel2Initialized,
     BothInitialized,
+}
+
+impl SeedDac {
+    fn new(dac: stm32::DAC, dac12_rec: rcc::rec::Dac12) -> Self {
+        Self {
+            c1: None,
+            c2: None,
+            state: SeedDacState::Uninitialized { dac, dac12_rec },
+        }
+    }
+
+    pub fn both_initialized(&self) -> bool {
+        matches!(self.state, SeedDacState::BothInitialized)
+    }
+
+    pub fn init_channels(
+        &mut self,
+        c1_pin: hal::gpio::gpioa::PA4<hal::gpio::Analog>,
+        c2_pin: hal::gpio::gpioa::PA5<hal::gpio::Analog>,
+    ) -> Option<()> {
+        match self.state {
+            SeedDacState::BothInitialized => return Some(()),
+            SeedDacState::Channel1Initialized | SeedDacState::Channel2Initialized => {
+                return None;
+            }
+            SeedDacState::Uninitialized { .. } => {}
+        }
+
+        let SeedDacState::Uninitialized { dac, dac12_rec } =
+            core::mem::replace(&mut self.state, SeedDacState::BothInitialized)
+        else {
+            return None;
+        };
+        let (c1, c2) = dac::dac(dac, (c1_pin, c2_pin), dac12_rec);
+
+        self.c1 = Some(c1);
+        self.c2 = Some(c2);
+        Some(())
+    }
+
+    fn init_c1(&mut self, c1_pin: hal::gpio::gpioa::PA4<hal::gpio::Analog>) -> Option<()> {
+        if self.c1.is_some() {
+            return Some(());
+        }
+
+        let SeedDacState::Uninitialized { dac, dac12_rec } =
+            core::mem::replace(&mut self.state, SeedDacState::Channel1Initialized)
+        else {
+            return None;
+        };
+        let c1 = dac::dac(dac, c1_pin, dac12_rec);
+        self.c1 = Some(c1);
+        Some(())
+    }
+
+    fn init_c2(&mut self, c2_pin: hal::gpio::gpioa::PA5<hal::gpio::Analog>) -> Option<()> {
+        if self.c2.is_some() {
+            return Some(());
+        }
+
+        let SeedDacState::Uninitialized { dac, dac12_rec } =
+            core::mem::replace(&mut self.state, SeedDacState::Channel2Initialized)
+        else {
+            return None;
+        };
+        let c2 = dac::dac(dac, c2_pin, dac12_rec);
+        self.c2 = Some(c2);
+        Some(())
+    }
+
+    pub fn take_c1_with_pin(
+        &mut self,
+        c1_pin: hal::gpio::gpioa::PA4<hal::gpio::Analog>,
+    ) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
+        if self.c1.is_none() {
+            self.init_c1(c1_pin)?;
+        }
+        self.c1.take()
+    }
+
+    pub fn take_c2_with_pin(
+        &mut self,
+        c2_pin: hal::gpio::gpioa::PA5<hal::gpio::Analog>,
+    ) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
+        if self.c2.is_none() {
+            self.init_c2(c2_pin)?;
+        }
+        self.c2.take()
+    }
+
+    pub fn take_c1(&mut self) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
+        self.c1.take()
+    }
+
+    pub fn take_c2(&mut self) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
+        self.c2.take()
+    }
 }
 
 pub struct MinimalSeedSystem {
@@ -508,85 +609,11 @@ impl SeedSystem {
             audio,
             adc1,
             adc2,
-            c1: None,
-            c2: None,
-            dac_state: SeedDacState::Uninitialized {
-                dac: resources.dac,
-                dac12_rec: resources.dac12_rec,
-            },
+            dac: SeedDac::new(resources.dac, resources.dac12_rec),
             sdram,
             flash,
             internal_usb: Some(internal_usb),
             delay,
         }
-    }
-
-    pub fn init_dac_channels(&mut self) -> Option<()> {
-        match self.dac_state {
-            SeedDacState::BothInitialized => return Some(()),
-            SeedDacState::Channel1Initialized | SeedDacState::Channel2Initialized => {
-                return None;
-            }
-            SeedDacState::Uninitialized { .. } => {}
-        }
-
-        let SeedDacState::Uninitialized { dac, dac12_rec } =
-            core::mem::replace(&mut self.dac_state, SeedDacState::BothInitialized)
-        else {
-            return None;
-        };
-        let c1_pin = self.gpio.daisy23.take()?;
-        let c2_pin = self.gpio.daisy22.take()?;
-        let (c1, c2) = dac::dac(dac, (c1_pin, c2_pin), dac12_rec);
-
-        self.c1 = Some(c1);
-        self.c2 = Some(c2);
-        Some(())
-    }
-
-    fn init_dac_c1(&mut self) -> Option<()> {
-        if self.c1.is_some() {
-            return Some(());
-        }
-
-        let SeedDacState::Uninitialized { dac, dac12_rec } =
-            core::mem::replace(&mut self.dac_state, SeedDacState::Channel1Initialized)
-        else {
-            return None;
-        };
-        let c1_pin = self.gpio.daisy23.take()?;
-        let c1 = dac::dac(dac, c1_pin, dac12_rec);
-        self.c1 = Some(c1);
-        Some(())
-    }
-
-    fn init_dac_c2(&mut self) -> Option<()> {
-        if self.c2.is_some() {
-            return Some(());
-        }
-
-        let SeedDacState::Uninitialized { dac, dac12_rec } =
-            core::mem::replace(&mut self.dac_state, SeedDacState::Channel2Initialized)
-        else {
-            return None;
-        };
-        let c2_pin = self.gpio.daisy22.take()?;
-        let c2 = dac::dac(dac, c2_pin, dac12_rec);
-        self.c2 = Some(c2);
-        Some(())
-    }
-
-    pub fn take_dac_c1(&mut self) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
-        if self.c1.is_none() {
-            self.init_dac_c1()?;
-        }
-        self.c1.take()
-    }
-
-    pub fn take_dac_c2(&mut self) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
-        if self.c2.is_none() {
-            self.init_dac_c2()?;
-        }
-        self.c2.take()
     }
 }

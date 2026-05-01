@@ -10,12 +10,33 @@ pub struct PatchSmSystem {
     pub audio: audio::Audio,
     pub adc1: adc::Adc<stm32::ADC1, adc::Disabled>,
     pub adc2: adc::Adc<stm32::ADC2, adc::Disabled>,
-    pub c1: Option<dac::C1<stm32::DAC, dac::Disabled>>,
-    pub c2: Option<dac::C2<stm32::DAC, dac::Disabled>>,
+    pub dac: PatchSmDac,
     pub sdram: &'static mut [f32],
     pub flash: crate::flash::Flash,
     pub internal_usb: Option<InternalUsbPins>,
     pub delay: Delay,
+}
+
+pub struct PatchSmDac {
+    c1: Option<dac::C1<stm32::DAC, dac::Disabled>>,
+    c2: Option<dac::C2<stm32::DAC, dac::Disabled>>,
+}
+
+impl PatchSmDac {
+    fn new(c1: dac::C1<stm32::DAC, dac::Disabled>, c2: dac::C2<stm32::DAC, dac::Disabled>) -> Self {
+        Self {
+            c1: Some(c1),
+            c2: Some(c2),
+        }
+    }
+
+    pub fn take_c1(&mut self) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
+        self.c1.take()
+    }
+
+    pub fn take_c2(&mut self) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
+        self.c2.take()
+    }
 }
 
 pub struct MinimalPatchSmSystem {
@@ -449,20 +470,11 @@ impl PatchSmSystem {
             audio,
             adc1,
             adc2,
-            c1: Some(c1),
-            c2: Some(c2),
+            dac: PatchSmDac::new(c1, c2),
             sdram,
             flash,
             internal_usb: Some(internal_usb),
             delay,
         }
-    }
-
-    pub fn take_dac_c1(&mut self) -> Option<dac::C1<stm32::DAC, dac::Disabled>> {
-        self.c1.take()
-    }
-
-    pub fn take_dac_c2(&mut self) -> Option<dac::C2<stm32::DAC, dac::Disabled>> {
-        self.c2.take()
     }
 }

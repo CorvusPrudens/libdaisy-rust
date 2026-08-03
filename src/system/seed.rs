@@ -292,7 +292,7 @@ macro_rules! seed_system_init {
 
 #[macro_export]
 macro_rules! seed_minimal_init {
-    ($core:ident, $device:ident, $ccdr:ident) => {{
+    ($core:ident, $device:ident, $ccdr:ident, $sample_rate:ident) => {{
         let resources = ::libdaisy::system::SystemResources {
             clocks: &$ccdr.clocks,
             adc1: $device.ADC1,
@@ -335,6 +335,7 @@ macro_rules! seed_minimal_init {
             dma1: $device.DMA1,
             dma1_rec: $ccdr.peripheral.DMA1,
             block_size: 0,
+            sample_rate: $sample_rate,
         };
 
         ::libdaisy::system::MinimalSeedSystem::new(resources)

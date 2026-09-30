@@ -21,6 +21,7 @@ pub mod devices;
 pub mod flash;
 pub mod gpio;
 pub mod hid;
+pub mod i2c;
 pub mod logger;
 pub mod mpu;
 pub mod prelude;

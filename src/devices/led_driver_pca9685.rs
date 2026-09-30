@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use crate::hal;
-use hal::i2c::I2c;
-use hal::prelude::*;
-use stm32h7xx_hal::prelude::_embedded_hal_blocking_i2c_Write as Write;
+use cortex_m::peripheral::DWT;
+use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::blocking::i2c::Write;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
@@ -41,11 +40,17 @@ impl Default for Pca9685TransmitBuffer {
 
 pub type DmaBuffer<const N: usize> = [Pca9685TransmitBuffer; N];
 
-pub struct LedDriverPca9685<I2CN, const NUM_DRIVERS: usize> {
-    i2c: I2c<I2CN>,
+const RETRY_MS: u32 = 1000;
+
+pub struct LedDriverPca9685<I, const NUM_DRIVERS: usize> {
+    i2c: I,
     draw_buffer: Option<&'static mut [u8]>,
     transmit_buffer: Option<&'static mut [u8]>,
     addresses: [u8; NUM_DRIVERS],
+    /// Whether each driver has been initialized and has kept responding.
+    ready: [bool; NUM_DRIVERS],
+    /// DWT cycle count after which unready drivers are tried again.
+    retry_at: u32,
 }
 
 // Constants
@@ -55,27 +60,21 @@ const PCA9685_MODE2: u8 = 0x01;
 const PRE_SCALE_MODE: u8 = 0xFE;
 const PCA9685_LED0: u8 = 0x06;
 
-impl<I2CN, const NUM_DRIVERS: usize> LedDriverPca9685<I2CN, NUM_DRIVERS>
+impl<I, const NUM_DRIVERS: usize> LedDriverPca9685<I, NUM_DRIVERS>
 where
-    I2c<I2CN>: Write,
+    I: Write,
 {
+    /// `i2c` must give up on a dead bus (see [`crate::i2c::I2cTimeout`]); the
+    /// HAL's own blocking I2C spins forever when no driver is connected.
     pub fn new(
-        mut i2c: I2c<I2CN>,
+        mut i2c: I,
         addresses: [u8; NUM_DRIVERS],
         dma_buffer_a: &'static mut DmaBuffer<NUM_DRIVERS>,
         dma_buffer_b: &'static mut DmaBuffer<NUM_DRIVERS>,
     ) -> Self {
-        // Init drivers
-        for &addr in &addresses {
-            let address = PCA9685_I2C_BASE_ADDRESS | addr;
-            let _ = i2c.write(address, &[PCA9685_MODE1, 0x00]);
-            crate::delay::CycleDelay::new().delay_ms(20u8);
-            let _ = i2c.write(address, &[PCA9685_MODE1, 0x00]);
-            crate::delay::CycleDelay::new().delay_ms(20u8);
-            let _ = i2c.write(address, &[PCA9685_MODE1, 0b00100000]); // Auto increment
-            crate::delay::CycleDelay::new().delay_ms(20u8);
-            // There are a few configurations in this register we may want to expose later.
-            let _ = i2c.write(address, &[PCA9685_MODE2, 0b00000110]); // OE hi-z, odrv=1
+        let mut ready = [false; NUM_DRIVERS];
+        for (ready, &addr) in ready.iter_mut().zip(&addresses) {
+            *ready = Self::init_driver(&mut i2c, addr, 20).is_ok();
         }
 
         let len = NUM_DRIVERS * Pca9685TransmitBuffer::SIZE;
@@ -98,7 +97,24 @@ where
             draw_buffer: Some(buffer_b_u8),
             transmit_buffer: Some(buffer_a_u8),
             addresses,
+            ready,
+            retry_at: DWT::cycle_count().wrapping_add(RETRY_MS * crate::MILICYCLES),
         }
+    }
+
+    /// Wake one driver and set it up, stopping at the first write it doesn't
+    /// acknowledge.
+    fn init_driver(i2c: &mut I, addr: u8, settle_ms: u8) -> Result<(), I::Error> {
+        let address = PCA9685_I2C_BASE_ADDRESS | addr;
+        let mut delay = crate::delay::CycleDelay::new();
+        i2c.write(address, &[PCA9685_MODE1, 0x00])?;
+        delay.delay_ms(settle_ms);
+        i2c.write(address, &[PCA9685_MODE1, 0x00])?;
+        delay.delay_ms(settle_ms);
+        i2c.write(address, &[PCA9685_MODE1, 0b00100000])?; // Auto increment
+        delay.delay_ms(settle_ms);
+        // There are a few configurations in this register we may want to expose later.
+        i2c.write(address, &[PCA9685_MODE2, 0b00000110]) // OE hi-z, odrv=1
     }
 
     pub fn set_led(&mut self, led_index: usize, brightness: f32) {
@@ -135,14 +151,34 @@ where
     }
 
     fn transmit(&mut self) {
+        let now = DWT::cycle_count();
+        // Signed distance, so the counter's wrap is harmless.
+        let retry = (now.wrapping_sub(self.retry_at) as i32) >= 0;
+        if retry {
+            self.retry_at = now.wrapping_add(RETRY_MS * crate::MILICYCLES);
+        }
+
         for driver_idx in 0..NUM_DRIVERS {
+            if !self.ready[driver_idx] {
+                // The oscillator needs 500us after waking; this runs in the
+                // main loop, so no longer than that.
+                if !retry
+                    || Self::init_driver(&mut self.i2c, self.addresses[driver_idx], 1).is_err()
+                {
+                    continue;
+                }
+                self.ready[driver_idx] = true;
+            }
+
             let address = PCA9685_I2C_BASE_ADDRESS | self.addresses[driver_idx];
 
             let buffer = self.transmit_buffer.as_mut().unwrap();
             let start = driver_idx * Pca9685TransmitBuffer::SIZE;
             let end = start + Pca9685TransmitBuffer::SIZE;
             let bytes = &buffer[start..end];
-            let _ = self.i2c.write(address, bytes);
+            if self.i2c.write(address, bytes).is_err() {
+                self.ready[driver_idx] = false;
+            }
         }
     }
 

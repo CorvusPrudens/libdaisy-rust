@@ -8,7 +8,8 @@
 
 use core::convert::Infallible;
 use cortex_m::prelude::_embedded_hal_blocking_i2c_Write;
-use log::info;
+use embedded_hal::blocking::i2c::WriteRead;
+use log::{error, info};
 use stm32h7xx_hal::{
     dma,
     gpio::{gpiob, gpioe, gpioh, Analog},
@@ -237,7 +238,12 @@ impl Audio {
                     i2c_sda.into_alternate_open_drain(),
                 );
 
-                let mut i2c = i2c2_d.i2c(i2c2_pins, Hertz::from_raw(100_000), i2c2_p, clocks);
+                let mut i2c = crate::i2c::I2cTimeout::new(i2c2_d.i2c(
+                    i2c2_pins,
+                    Hertz::from_raw(100_000),
+                    i2c2_p,
+                    clocks,
+                ));
 
                 let codec_i2c_address: u8 = 0x1a; // or 0x1b if CSB is high
 
@@ -503,8 +509,15 @@ impl Audio {
             i2c_sda.into_alternate_open_drain(),
         );
 
-        let mut i2c = i2c2_d.i2c(i2c2_pins, Hertz::from_raw(100_000), i2c2_p, clocks);
-        pcm3060_init(&mut i2c, delay);
+        let mut i2c = crate::i2c::I2cTimeout::new(i2c2_d.i2c(
+            i2c2_pins,
+            Hertz::from_raw(100_000),
+            i2c2_p,
+            clocks,
+        ));
+        if let Err(e) = pcm3060_init(&mut i2c, delay) {
+            error!("PCM3060 codec did not respond: {e:?}");
+        }
 
         const DEV_ADDR: u8 = 0x46;
 
@@ -518,16 +531,16 @@ impl Audio {
         const MASK_DAC_PSV: u8 = 0x10;
         const MASK_FMT: u8 = 0x01;
 
-        // handle the error?
-        fn read_reg(reg_addr: u8, i2c: &mut I2c<pac::I2C2>) -> u8 {
+        type CodecI2c = crate::i2c::I2cTimeout<pac::I2C2>;
+
+        fn read_reg(reg_addr: u8, i2c: &mut CodecI2c) -> Result<u8, crate::i2c::Error> {
             let mut buffer = [0u8; 1];
-            i2c.write_read(DEV_ADDR, &[reg_addr], &mut buffer).unwrap();
-            buffer[0]
+            i2c.write_read(DEV_ADDR, &[reg_addr], &mut buffer)?;
+            Ok(buffer[0])
         }
 
-        // handle the error?
-        fn write_reg(reg_addr: u8, val: u8, i2c: &mut I2c<pac::I2C2>) {
-            i2c.write(DEV_ADDR, &[reg_addr, val]).unwrap();
+        fn write_reg(reg_addr: u8, val: u8, i2c: &mut CodecI2c) -> Result<(), crate::i2c::Error> {
+            i2c.write(DEV_ADDR, &[reg_addr, val])
         }
 
         // POWER-ON RESET and EXTERNAL RESET Sequence
@@ -536,31 +549,34 @@ impl Audio {
         // Slave address: 0b100011Nx
         // N = 0 (GND on hardware)
         // x = R/W (not passed to address param)
-        fn pcm3060_init(i2c: &mut I2c<pac::I2C2>, delay: &mut impl DelayMs<u8>) {
+        fn pcm3060_init(
+            i2c: &mut CodecI2c,
+            delay: &mut impl DelayMs<u8>,
+        ) -> Result<(), crate::i2c::Error> {
             // MSRT
-            let mut sys_ctrl = read_reg(REG_SYS_CTRL, i2c);
+            let mut sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
             sys_ctrl &= !MASK_MRST;
-            write_reg(REG_SYS_CTRL, sys_ctrl, i2c);
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)?;
             delay.delay_ms(4);
 
             // SRST
-            sys_ctrl = read_reg(REG_SYS_CTRL, i2c);
+            sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
             sys_ctrl &= !MASK_SRST;
-            write_reg(REG_SYS_CTRL, sys_ctrl, i2c);
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)?;
             delay.delay_ms(4);
 
             // ADC/DAC Format set to 24-bit LJ
-            let mut dac_ctrl = read_reg(REG_DAC_CTRL1, i2c);
-            let mut adc_ctrl = read_reg(REG_ADC_CTRL1, i2c);
+            let mut dac_ctrl = read_reg(REG_DAC_CTRL1, i2c)?;
+            let mut adc_ctrl = read_reg(REG_ADC_CTRL1, i2c)?;
             dac_ctrl |= MASK_FMT;
             adc_ctrl |= MASK_FMT;
-            write_reg(REG_DAC_CTRL1, dac_ctrl, i2c);
-            write_reg(REG_ADC_CTRL1, adc_ctrl, i2c);
+            write_reg(REG_DAC_CTRL1, dac_ctrl, i2c)?;
+            write_reg(REG_ADC_CTRL1, adc_ctrl, i2c)?;
 
             // Disable Powersave for ADC/DAC
-            sys_ctrl = read_reg(REG_SYS_CTRL, i2c);
+            sys_ctrl = read_reg(REG_SYS_CTRL, i2c)?;
             sys_ctrl &= !(MASK_ADC_PSV | MASK_DAC_PSV);
-            write_reg(REG_SYS_CTRL, sys_ctrl, i2c);
+            write_reg(REG_SYS_CTRL, sys_ctrl, i2c)
         }
 
         info!("Start audio stream...");

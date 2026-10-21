@@ -38,9 +38,9 @@ const PLL1_P_HZ: Hertz = CLOCK_RATE_HZ;
 const PLL1_Q_HZ: Hertz = Hertz::from_raw(CLOCK_RATE_HZ.raw() / 18);
 const PLL1_R_HZ: Hertz = Hertz::from_raw(CLOCK_RATE_HZ.raw() / 32);
 // PLL2
-const PLL2_P_HZ: Hertz = Hertz::from_raw(4_000_000);
+const PLL2_P_HZ: Hertz = Hertz::from_raw(40_000_000);
 const PLL2_Q_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 2); // No divder given, what's the default?
-const PLL2_R_HZ: Hertz = Hertz::from_raw(PLL2_P_HZ.raw() / 4); // No divder given, what's the default?
+const PLL2_R_HZ: Hertz = Hertz::from_raw(200_000_000);
 
 fn init_clocks(
     mut pwr: stm32::PWR,
@@ -69,7 +69,7 @@ fn init_clocks(
         // PLL2
         .pll2_p_ck(PLL2_P_HZ) // Default adc_ker_ck_input
         // .pll2_q_ck(PLL2_Q_HZ)
-        // .pll2_r_ck(PLL2_R_HZ)
+        .pll2_r_ck(PLL2_R_HZ)
         // PLL3
         .pll3_strategy(rcc::PllConfigStrategy::Fractional)
         .pll3_p_ck(PLL3_P_HZ) // used for SAI1

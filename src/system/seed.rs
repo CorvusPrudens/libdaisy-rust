@@ -423,7 +423,7 @@ impl SeedSystem {
         let (adc1, adc2) = adc::adc12(
             resources.adc1,
             resources.adc2,
-            4.MHz(),
+            2.MHz(),
             &mut delay,
             resources.adc12_rec,
             resources.clocks,
